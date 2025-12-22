@@ -1,0 +1,10 @@
+name = "GradusXSPEC"
+uuid = "8153e274-656c-44e5-9129-66f17e150590"
+version = "0.1.0"
+authors = ["phajy <andy.young@bristol.ac.uk>"]
+
+[deps]
+Gradus = "c5b7b928-ea15-451c-ad6f-a331a0f3e4b7"
+
+[compat]
+Gradus = "0.4.31"

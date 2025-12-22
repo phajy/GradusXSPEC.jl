@@ -29,3 +29,5 @@ JuliaLocalPreferences.toml
 
 # My files
 build/
+main
+model.dat
