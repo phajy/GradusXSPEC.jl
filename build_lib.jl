@@ -14,6 +14,9 @@ create_library(
 
 # Create the model.dat file to go along with the model
 open("model.dat", "w") do f
-    write(f, "gradus 1 0. 1.e20 c_gradusjulia add 0 0\n")
+    write(f, "gradus 4 0. 1.e20 c_gradusjulia add 0 0\n")
+    write(f, "spin \" \" 0.998 0.0 0.0 0.998 0.998 0.1\n")
+    write(f, "Eddington \" \" 0.1 0.0 0.0 1.0 1.0 0.1\n")
     write(f, "inc degrees 30.0 1.0 1.0 89.0 89.0 0.1\n")
+    write(f, "h r_g 3.0 1.0 1.0 20.0 20.0 0.1\n")
 end

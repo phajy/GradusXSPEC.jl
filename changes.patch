@@ -1,0 +1,13 @@
+--- Makefile	2025-12-24 16:29:54
++++ Makefile_to_use	2025-12-24 16:29:11
+@@ -56,6 +56,10 @@
+ 			  ${PACKAGE} Makefile pkgIndex.tcl *.bck
+ 
+ HD_SHLIB_LIBS           = ${HD_LFLAGS} -l${CCFITS} -l${CFITSIO} -lXS \
++						  -Wl,-rpath,${PWD}/build/lib \
++						  -Wl,-rpath,${PWD}/build/lib/julia \
++						  -L${PWD}/build/lib \
++						  -lGradusXSPEC \
+                           -lXSUtil -lXSFunctions -lXSModel ${TCL} \
+                           -l${HEAUTILS} ${HD_STD_LIBS} ${FFTW} ${FGSL} ${GSL_LIBS} ${SYSLIBS} ${F77LIBS4C} \
+ 
