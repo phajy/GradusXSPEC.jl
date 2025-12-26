@@ -28,7 +28,7 @@ using Gradus
         e_bins, flux_array = lineprofile(m, x, d, profile; bins = e_bins)
 
         # do we want bin integrated fluxes?
-        println("Maximum value of flux_array: ", maximum(flux_array))
+        # println("Maximum value of flux_array: ", maximum(flux_array))
 
         # copy flux_array back into flux
         for i in 1:length(flux_array)
