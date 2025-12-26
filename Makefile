@@ -1,18 +1,67 @@
-# Adjust these paths if your folder structure changes
-LIB_DIR = ./build/lib
-INC_DIR = ./build/include
-JULIA_LIB_DIR = ./build/lib/julia
+HD_COMPONENT_NAME	= Xspec
 
-# Compiler flags
-CFLAGS = -I$(INC_DIR)
-LDFLAGS = -L$(LIB_DIR) -lGradusXSPEC \
-          -Wl,-rpath,$(LIB_DIR) \
-          -Wl,-rpath,$(JULIA_LIB_DIR)
+HD_COMPONENT_VERS	= 
 
-all: main
+#library definition
 
-main: main.c
-	gcc main.c -o main $(CFLAGS) $(LDFLAGS)
+HD_LIBRARY_ROOT		= gradus
 
-clean:
-	rm -f main
+HD_LIB_STYLE		= shared
+
+#source code
+
+HD_LIBRARY_SRC_f	= 
+
+
+HD_LIBRARY_SRC_f90	= 
+
+
+HD_LIBRARY_SRC_f03	= 
+
+HD_LIBRARY_SRC_c	= gradusxspec.c
+
+HD_LIBRARY_SRC_C	= 
+
+HD_LIBRARY_SRC_cxx	= gradusFunctionMap.cxx \
+			  lpack_gradus.cxx
+
+HD_LIBRARY_SRC_cpp	= 
+
+HD_LIBRARY_SRC_cc	= 
+
+
+HD_INSTALL_LIBRARIES	= ${HD_LIBRARY_ROOT}
+
+HD_CXXFLAGS		= ${HD_STD_CXXFLAGS} \
+			  -I${HEADAS}/include -I${HEADAS}/include/XSFunctions \
+			  -I${HEADAS}/include/XSFunctions/Utilities \
+			  -DINITPACKAGE
+
+HD_CFLAGS		= ${HD_STD_CFLAGS} \
+			  -I${HEADAS}/include -I${HEADAS}/include/XSFunctions \
+			  -I${HEADAS}/include/XSFunctions/Utilities \
+			  -DINITPACKAGE
+
+HD_FFLAGS		= ${HD_STD_FFLAGS} \
+			  -I${HEADAS}/include -I${HEADAS}/include/XSFunctions \
+			  -I${HEADAS}/include/XSFunctions/Utilities \
+			  -DINITPACKAGE
+
+#lib file name
+PACKAGE		= lib${HD_LIBRARY_ROOT}${SHLIB_SUFFIX}
+
+HD_CLEAN		= lpack_${HD_LIBRARY_ROOT}.cxx \
+			  ${HD_LIBRARY_ROOT}FunctionMap.cxx \
+			  ${HD_LIBRARY_ROOT}FunctionMap.h \
+			  ${PACKAGE} Makefile pkgIndex.tcl *.bck
+
+HD_SHLIB_LIBS           = ${HD_LFLAGS} -l${CCFITS} -l${CFITSIO} -lXS \
+						  -Wl,-rpath,${PWD}/build/lib \
+						  -Wl,-rpath,${PWD}/build/lib/julia \
+						  -L${PWD}/build/lib \
+						  -lGradusXSPEC \
+                          -lXSUtil -lXSFunctions -lXSModel ${TCL} \
+                          -l${HEAUTILS} ${HD_STD_LIBS} ${FFTW} ${FGSL} ${GSL_LIBS} ${SYSLIBS} ${F77LIBS4C} \
+
+include ${HD_STD_MAKEFILE}
+
