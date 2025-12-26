@@ -20,6 +20,8 @@ patch Makefile < changes.patch
 hmake
 ```
 
+Note that at the moment this patches the Makefile so that it links correctly to the GradusXSPEC library above. There is certainly a better an more robust way of doing this, but this is a placeholder that works for me now.
+
 3. Test the model
 
 ```
