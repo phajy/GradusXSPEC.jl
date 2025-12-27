@@ -1,6 +1,6 @@
 # GradusXSPEC.jl
 
-Use Gradus to evaluate models from XSPEC
+Call Gradus models from XSPEC.
 
 ## How to build the library and import it into XSPEC
 
