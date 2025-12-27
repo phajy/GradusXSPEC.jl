@@ -7,7 +7,7 @@ Use Gradus to evaluate models from XSPEC
 1. Make the Julia library
 
 ```sh
-julia --project=. build_lib.jl
+julia --project=. src/build_lib.jl
 ```
 
 This will build the shared library `build/lib/libGradusXSPEC.dylib` and create the `model.dat` file.
