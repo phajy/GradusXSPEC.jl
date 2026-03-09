@@ -15,17 +15,23 @@ using Gradus
         println("height          = ", params[4])
 
         # calculate the line profile
+        # metric
         m = KerrMetric(M = 1.0, a = params[1])
-        d = ShakuraSunyaev(m, eddington_ratio = params[2])
+        # disc geometry
+        # d = ShakuraSunyaev(m, eddington_ratio = params[2])
+        d = ThinDisc(outer_radius = Inf)
+        #  observer
         θ = params[3]
         x = SVector(0.0, 1000.0, deg2rad(θ), 0.0)
-        model = LampPostModel(h = params[4])
-        profile = emissivity_profile(m, d, model; n_samples=128)
+        # corona model and emissivity profile
+        # model = LampPostModel(h = params[4])
+        # profile = emissivity_profile(m, d, model; n_samples=128)
 
         e_bins = [(energies[i] + energies[i+1]) / 2 for i in 1:(length(energies)-1)]
         e_bins = e_bins ./ 6.4
         println("Calculating line profile...")
-        e_bins, flux_array = lineprofile(m, x, d, profile; bins = e_bins)
+        # e_bins, flux_array = lineprofile(m, x, d, profile; bins = e_bins)
+        e_bins, flux_array = lineprofile(e_bins, r -> r^-3, m, x, d; maxrₑ = 400.0)
 
         # do we want bin integrated fluxes?
         # println("Maximum value of flux_array: ", maximum(flux_array))
