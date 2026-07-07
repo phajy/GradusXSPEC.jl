@@ -2,17 +2,32 @@
 
 Call Gradus models from XSPEC.
 
+## Prerequisites
+
+- Julia 1.12 (tested with 1.12.6)
+- HEASOFT / XSPEC with `HEADAS` environment configured
+- Gradus.jl (installed via this project's `Project.toml`)
+
 ## How to build the library and import it into XSPEC
 
-1. Make the Julia library
+### 1. Build the Julia library
+
+From the repository root:
 
 ```sh
+./build-julia.sh
+```
+
+This instantiates the Julia environment, then compiles the shared library and writes `model.dat`. The library is placed at `build/lib/libGradusXSPEC.dylib` on macOS (`.so` on Linux).
+
+Alternatively, run the steps manually:
+
+```sh
+julia --project=. -e 'using Pkg; Pkg.instantiate()'
 julia --project=. src/build_lib.jl
 ```
 
-This will build the shared library `build/lib/libGradusXSPEC.dylib` and create the `model.dat` file.
-
-2. Create the XSPEC model
+### 2. Create the XSPEC model
 
 ```sh
 initpackage gradus model.dat .
@@ -20,9 +35,9 @@ patch Makefile < changes.patch
 hmake
 ```
 
-Note that at the moment this patches the Makefile so that it links correctly to the GradusXSPEC library above. There is certainly a better an more robust way of doing this, but this is a placeholder that works for me now.
+`initpackage` generates a fresh `Makefile` for the local model. That Makefile does not know about the GradusXSPEC shared library, so `changes.patch` adds the required rpath and link flags. There is certainly a better and more robust way of doing this, but this is a placeholder that works for now.
 
-3. Test the model
+### 3. Test the model
 
 ```
 xspec
