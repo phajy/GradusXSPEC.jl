@@ -64,3 +64,6 @@ ________________________________________________________________________
 ## References
 
 - [Appendix C: Adding Models to XSPEC](https://heasarc.gsfc.nasa.gov/docs/software/xspec/manual/XSappendixLocal.html) — official HEASARC documentation for local models (`initpackage`, `model.dat`, `hmake`, `lmod`)
+- [OGIP 92-009: The XSPEC Table Model Format (PDF)](https://heasarc.gsfc.nasa.gov/FTP/caldb/docs/memos/ogip_92_009/ogip_92_009.pdf) — reference format for table model files, relevant when using table-file contents in model evaluation
+- [Gradus.jl codebase](https://codeberg.org/astro-group/Gradus.jl) — upstream source used to build model physics and APIs
+- [Gradus.jl documentation](https://astro-group.codeberg.page/Gradus.jl/dev/) — reference for Gradus usage, line profiles, emissivity, and API behavior
