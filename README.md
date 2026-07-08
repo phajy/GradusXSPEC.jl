@@ -31,11 +31,11 @@ julia --project=. src/build_lib.jl
 
 ```sh
 initpackage gradus model.dat .
-patch Makefile < changes.patch
+./patch-xspec-makefile.sh
 hmake
 ```
 
-`initpackage` generates a fresh `Makefile` for the local model. That Makefile does not know about the GradusXSPEC shared library, so `changes.patch` adds the required rpath and link flags. There is certainly a better and more robust way of doing this, but this is a placeholder that works for now.
+`initpackage` generates a fresh `Makefile` for the local model. That Makefile does not know about the GradusXSPEC shared library, so `patch-xspec-makefile.sh` inserts the required rpath and link flags into `HD_SHLIB_LIBS`. The script is idempotent (safe to run twice) and anchors on the `-lXS` line rather than fixed line numbers, so it should survive minor HEASOFT/Makefile changes better than a static patch file.
 
 ### 3. Test the model
 
