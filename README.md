@@ -60,3 +60,7 @@ ________________________________________________________________________
 ```
 
 ![XSPEC plot output](figs/pgplot.png)
+
+## References
+
+- [Appendix C: Adding Models to XSPEC](https://heasarc.gsfc.nasa.gov/docs/software/xspec/manual/XSappendixLocal.html) — official HEASARC documentation for local models (`initpackage`, `model.dat`, `hmake`, `lmod`)
