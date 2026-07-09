@@ -21,8 +21,6 @@ void gradusjulia(const double* energy, int Nflux, const double* parameter,
         julia_initialized = 1;
     }
 
-    // Initially do absolutely nothing to see if we can get this basic function working!
-    printf("Calling Gradus\n");
     gradusxspec(energy, Nflux, parameter, spectrum, flux, fluxVariance, init);
 
     // Don't shutdown Julia here; keep it running for subsequent calls

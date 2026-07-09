@@ -1,4 +1,5 @@
 using PackageCompiler
+include("model_definition.jl")
 
 # This generates the library in a "build" folder
 # It creates libGradusXSPEC.so (Linux) or .dll (Windows) and a header file
@@ -12,11 +13,5 @@ create_library(
     include_lazy_artifacts=true
 )
 
-# Create the model.dat file to go along with the model
-open("model.dat", "w") do f
-    write(f, "gradus 4 0. 1.e20 c_gradusjulia add 0 0\n")
-    write(f, "spin \" \" 0.99 0.0 0.0 1.0 1.0 0.1\n")
-    write(f, "Eddington \" \" 0.1 0.0 0.0 1.0 1.0 0.1\n")
-    write(f, "inc degrees 30.0 1.0 1.0 89.0 89.0 5.0\n")
-    write(f, "h r_g 3.0 1.0 1.0 20.0 20.0 0.25\n")
-end
+# Create the model.dat file to go along with the model.
+write("model.dat", model_dat_text())
