@@ -4,8 +4,9 @@ using FITSIO
     XspecTableModel
 
 OGIP/XSPEC additive table model (OGIP 92-009) loaded from a FITS file such as
-`xillverD-5.fits`. Parameter axes are stored with the last table parameter
-varying fastest, matching the `SPECTRA` row ordering.
+`xillverD-5.fits`. `SPECTRA` rows follow OGIP ordering (last parameter varies
+fastest); `spectra` is reshaped as `(p5, p4, p3, p2, p1, energy)` so parameter
+`i` is accessed at index `i` in `view(spectra, i5, i4, i3, i2, i1, :)`.
 """
 struct XspecTableModel
     name::String
@@ -60,7 +61,7 @@ function load_xspec_table(path::AbstractString)
         expected_rows = prod(length.(param_values))
         n_rows == expected_rows || error("unexpected SPECTRA row count: $n_rows != $expected_rows")
 
-        n5, n4, n3, n2, n1 = length.(param_values)
+        n1, n2, n3, n4, n5 = length.(param_values)
         spectra = reshape(spec_matrix, n5, n4, n3, n2, n1, n_energy)
 
         return XspecTableModel(name, param_names, param_values, energy_lo, energy_hi, spectra)

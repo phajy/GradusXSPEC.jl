@@ -42,6 +42,28 @@ function main()
     println("Spectrum length: ", length(spectrum))
     println("Spectrum integral (sum): ", sum(spectrum))
     println("Spectrum max: ", maximum(spectrum))
+
+    println("Cross-checking SPECTRA rows against PARAMVAL ...")
+    f = FITS(table_path)
+    try
+        pval = read(f[4], "PARAMVAL")
+        intpspec = Float64.(read(f[4], "INTPSPEC"))
+        nrows = size(pval, 2)
+        mismatches = 0
+        for r in 1:nrows
+            idx = ntuple(i -> findfirst(==(Float64(pval[i, r])), table.param_values[i]), 5)
+            from_table = vec(view(table.spectra, idx[5], idx[4], idx[3], idx[2], idx[1], :))
+            direct = intpspec[:, r]
+            if maximum(abs.(from_table .- direct)) > 1e-6 * max(maximum(abs.(direct)), 1.0)
+                mismatches += 1
+            end
+        end
+        println("PARAMVAL row mismatches: ", mismatches, " / ", nrows)
+        mismatches == 0 || error("table indexing does not match PARAMVAL rows")
+    finally
+        close(f)
+    end
+
     println("Done.")
 end
 
