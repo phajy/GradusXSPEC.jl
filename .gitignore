@@ -34,3 +34,4 @@ pkgIndex.tcl
 *.o
 pgplot.ps
 xillverD-5.fits
+docs/figures/
