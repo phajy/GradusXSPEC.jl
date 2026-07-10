@@ -3,9 +3,16 @@ module GradusXSPEC
 using Base: @ccallable
 using Gradus
 include("model_definition.jl")
+include("line_profile.jl")
 
-const N_MODEL_PARAMS = length(MODEL_PARAMETERS)
-const PARAM_GRIDS = ntuple(i -> build_parameter_grid(MODEL_PARAMETERS[i]), N_MODEL_PARAMS)
+export default_g_grid,
+    g_midpoints_from_energy_edges,
+    line_profile_kernel,
+    line_profile_on_energy_edges,
+    E_REST_KEV
+
+const N_MODEL_PARAMS = length(GRADUS_PARAMETERS)
+const PARAM_GRIDS = ntuple(i -> build_parameter_grid(GRADUS_PARAMETERS[i]), N_MODEL_PARAMS)
 const CACHE_LOCK = ReentrantLock()
 const SPECTRUM_CACHE = Dict{Tuple{UInt64,NTuple{N_MODEL_PARAMS,Int}},Vector{Float64}}()
 const VERBOSE = Ref(false)
@@ -27,7 +34,7 @@ end
 
 function _format_grid_point(params::NTuple{N_MODEL_PARAMS,Float64})
     parts = String[]
-    for (i, spec) in pairs(MODEL_PARAMETERS)
+    for (i, spec) in pairs(GRADUS_PARAMETERS)
         push!(parts, "$(spec.name)=$(params[i])")
     end
     return join(parts, ", ")
@@ -41,36 +48,10 @@ function _energy_signature(energies::AbstractVector{<:Real})
     return UInt64(h)
 end
 
-function _normalized_midpoint_bins(energies::AbstractVector{<:Real})
-    n_bins = length(energies) - 1
-    bins = Vector{Float64}(undef, n_bins)
-    @inbounds for i in 1:n_bins
-        bins[i] = (Float64(energies[i]) + Float64(energies[i + 1])) / 12.8
-    end
-    return bins
-end
-
 # Core physics entry point: evaluates the Gradus line profile at one parameter-grid
-# point. Grid caching and interpolation in `_interpolated_spectrum` call this;
-# change metric, disc, corona, or line-profile settings here.
+# point. Grid caching and interpolation in `_interpolated_spectrum` call this.
 function _evaluate_model_on_grid(params::NTuple{N_MODEL_PARAMS,Float64}, energies::AbstractVector{<:Real})
-    spin, eddington, inclination, height = params
-    m = KerrMetric(M = 1.0, a = spin)
-    d = ShakuraSunyaev(m, eddington_ratio = eddington)
-    x = SVector(0.0, 1000.0, deg2rad(inclination), 0.0)
-    corona = LampPostModel(h = height)
-    profile = emissivity_profile(m, d, corona; n_samples = 128)
-    e_bins = _normalized_midpoint_bins(energies)
-    _, flux = lineprofile(
-        m,
-        x,
-        d,
-        profile;
-        bins = e_bins,
-        method = TransferFunctionMethod(),
-        maxrₑ = 400.0,
-    )
-    return Vector{Float64}(flux)
+    return line_profile_on_energy_edges(energies, params)
 end
 
 function _grid_bounds_and_weight(value::Float64, grid::Vector{Float64})

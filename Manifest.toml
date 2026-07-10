@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "a49ce9099af57fc8f3e906a9aef8ba3ca8addc70"
+project_hash = "b5109309e99d1d4daa89c5bcf269f80ed76a9c63"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "d9aaef7c63466eee4de23b4d9dad03629df54bea"
@@ -169,6 +169,24 @@ deps = ["Statistics"]
 git-tree-sha1 = "557dbf3270656fcfbdf9b22cf0fa073edc1ef1ff"
 uuid = "3235f445-51d8-4100-901d-5b23398ac3ab"
 version = "0.1.13"
+
+[[deps.Bzip2_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "1b96ea4a01afe0ea4090c5c8039690672dd13f2e"
+uuid = "6e34b625-4abd-537c-b88f-471c36dfa7a0"
+version = "1.0.9+0"
+
+[[deps.CFITSIO]]
+deps = ["CFITSIO_jll"]
+git-tree-sha1 = "8c6b984c3928736d455eb53a6adf881457825269"
+uuid = "3b1b4be9-1499-4b22-8d78-7db3344d1961"
+version = "1.7.2"
+
+[[deps.CFITSIO_jll]]
+deps = ["Artifacts", "Bzip2_jll", "JLLWrappers", "LibCURL_jll", "Libdl", "Zlib_jll"]
+git-tree-sha1 = "d846411d1d7eb34739105f3d6fbba7c93beded3d"
+uuid = "b3e40c51-02ae-5482-8a39-3ace5868dcf4"
+version = "4.6.4+0"
 
 [[deps.Combinatorics]]
 git-tree-sha1 = "08c8b6831dc00bfea825826be0bc8336fc369860"
@@ -487,6 +505,12 @@ git-tree-sha1 = "6866aec60ef98e3164cd8d6855225684207e9dff"
 uuid = "f5851436-0d7a-5f13-b9de-f02708fd171a"
 version = "3.3.12+0"
 
+[[deps.FITSIO]]
+deps = ["CFITSIO", "Printf", "Reexport", "Tables"]
+git-tree-sha1 = "f57de3f533590c785210893030736dc11c4a4afb"
+uuid = "525bcba6-941b-5504-bd06-fd0dc1a4d2eb"
+version = "0.17.5"
+
 [[deps.FastBroadcast]]
 deps = ["ArrayInterface", "LinearAlgebra"]
 git-tree-sha1 = "8b77b1a6d20b051c223c4907d92dbf9af7b23fa5"
@@ -656,7 +680,7 @@ version = "0.4.31"
     DiffEqGPU = "071ae1c0-96b5-11e9-1965-c90190d839ea"
 
 [[deps.GradusXSPEC]]
-deps = ["Gradus", "PackageCompiler"]
+deps = ["FITSIO", "Gradus", "PackageCompiler"]
 path = "."
 uuid = "8153e274-656c-44e5-9129-66f17e150590"
 version = "0.1.0"
