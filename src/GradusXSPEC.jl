@@ -4,12 +4,20 @@ using Base: @ccallable
 using Gradus
 include("model_definition.jl")
 include("line_profile.jl")
+include("table_model.jl")
+include("convolution.jl")
 
 export default_g_grid,
     g_midpoints_from_energy_edges,
     line_profile_kernel,
     line_profile_on_energy_edges,
-    E_REST_KEV
+    E_REST_KEV,
+    load_xspec_table,
+    interpolate_table_spectrum,
+    interpolate_line_kernel,
+    build_convolution_matrix,
+    convolve_reflection,
+    rebin_flux
 
 const N_MODEL_PARAMS = length(GRADUS_PARAMETERS)
 const PARAM_GRIDS = ntuple(i -> build_parameter_grid(GRADUS_PARAMETERS[i]), N_MODEL_PARAMS)
