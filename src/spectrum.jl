@@ -130,15 +130,12 @@ function evaluate_spectrum(
     return evaluate_spectrum(energy_edges, params; kwargs...)
 end
 
-const PHYSICS_PARAM_GRIDS =
-    ntuple(i -> build_parameter_grid(PHYSICS_PARAMETERS[i]), N_PHYSICS_PARAMS)
-const REFLECTION_CACHE_LOCK = ReentrantLock()
-const REFLECTION_SPECTRUM_CACHE =
-    Dict{Tuple{UInt64, String, NTuple{N_PHYSICS_PARAMS, Int}}, Vector{Float64}}()
-const REFLECTION_CACHE_HITS = Ref(0)
-const REFLECTION_CACHE_MISSES = Ref(0)
+const GRADUS_PARAM_GRIDS =
+    ntuple(i -> build_parameter_grid(GRADUS_PARAMETERS[i]), N_GRADUS_PARAMS)
+const REFLECTION_PARAM_GRIDS =
+    ntuple(i -> build_parameter_grid(REFLECTION_PARAMETERS[i]), N_REFLECTION_PARAMS)
 
-function _physics_grid_bounds_and_weight(value::Float64, grid::Vector{Float64})
+function _param_grid_bounds_and_weight(value::Float64, grid::Vector{Float64})
     clamped = clamp(value, first(grid), last(grid))
     hi = searchsortedfirst(grid, clamped)
     if hi <= 1
@@ -155,16 +152,19 @@ function _physics_grid_bounds_and_weight(value::Float64, grid::Vector{Float64})
     end
 end
 
-function _physics_interpolation_corners(params::NTuple{N_PHYSICS_PARAMS, Float64})
-    bounds = ntuple(i -> _physics_grid_bounds_and_weight(params[i], PHYSICS_PARAM_GRIDS[i]), N_PHYSICS_PARAMS)
-    corners = Dict{NTuple{N_PHYSICS_PARAMS, Int}, Float64}()
-    for mask in 0:(UInt(1) << N_PHYSICS_PARAMS) - 1
+function _multilinear_corners(
+    param_grids::NTuple{N, Vector{Float64}},
+    params::NTuple{N, Float64},
+) where {N}
+    bounds = ntuple(i -> _param_grid_bounds_and_weight(params[i], param_grids[i]), N)
+    corners = Dict{NTuple{N, Int}, Float64}()
+    for mask in 0:(UInt(1) << N) - 1
         idx = ntuple(
             i -> ((mask >> (i - 1)) & UInt(1)) == UInt(1) ? bounds[i][2] : bounds[i][1],
-            N_PHYSICS_PARAMS,
+            N,
         )
         weight = 1.0
-        for i in 1:N_PHYSICS_PARAMS
+        for i in 1:N
             θ = bounds[i][3]
             if ((mask >> (i - 1)) & UInt(1)) == UInt(1)
                 weight *= θ
@@ -179,50 +179,89 @@ function _physics_interpolation_corners(params::NTuple{N_PHYSICS_PARAMS, Float64
     return corners
 end
 
-function _physics_grid_point_params(idx::NTuple{N_PHYSICS_PARAMS, Int})
-    return ntuple(i -> PHYSICS_PARAM_GRIDS[i][idx[i]], N_PHYSICS_PARAMS)
+function _gradus_grid_point_params(idx::NTuple{N_GRADUS_PARAMS, Int})
+    return ntuple(i -> GRADUS_PARAM_GRIDS[i][idx[i]], N_GRADUS_PARAMS)
 end
 
-function _format_physics_grid_point(params::NTuple{N_PHYSICS_PARAMS, Float64})
+function _reflection_grid_point_params(idx::NTuple{N_REFLECTION_PARAMS, Int})
+    return ntuple(i -> REFLECTION_PARAM_GRIDS[i][idx[i]], N_REFLECTION_PARAMS)
+end
+
+function _format_gradus_grid_point(params::NTuple{N_GRADUS_PARAMS, Float64})
     parts = String[]
-    for (i, spec) in pairs(PHYSICS_PARAMETERS)
+    for (i, spec) in pairs(GRADUS_PARAMETERS)
         push!(parts, "$(spec.name)=$(params[i])")
     end
     return join(parts, ", ")
 end
 
-function _get_or_compute_convolved_spectrum(
+function _format_reflection_grid_point(params::NTuple{N_REFLECTION_PARAMS, Float64})
+    parts = String[]
+    for (i, spec) in pairs(REFLECTION_PARAMETERS)
+        push!(parts, "$(spec.name)=$(params[i])")
+    end
+    return join(parts, ", ")
+end
+
+function _convolution_cache_signature(g_grid::AbstractVector{<:Real}, n_sub::Int)
+    return UInt64(hash(g_grid, hash(n_sub)))
+end
+
+const MATRIX_CACHE_LOCK = ReentrantLock()
+const CONVOLUTION_MATRIX_CACHE =
+    Dict{Tuple{UInt64, Int, String, NTuple{N_GRADUS_PARAMS, Int}}, Matrix{Float64}}()
+const MATRIX_CACHE_HITS = Ref(0)
+const MATRIX_CACHE_MISSES = Ref(0)
+
+function _get_or_compute_convolution_matrix(
     table::XspecTableModel,
     table_path::AbstractString,
-    idx::NTuple{N_PHYSICS_PARAMS, Int};
+    gradus_idx::NTuple{N_GRADUS_PARAMS, Int};
     g_grid::AbstractVector{<:Real} = default_g_grid(),
     n_sub::Int = 4,
 )
-    g_sig = hash(g_grid, hash(n_sub))
-    key = (UInt64(g_sig), table_path, idx)
-    grid_params = _physics_grid_point_params(idx)
-    gradus_params = ntuple(i -> grid_params[i], N_GRADUS_PARAMS)
-    refl_params = ntuple(i -> grid_params[N_GRADUS_PARAMS + i], N_REFLECTION_PARAMS)
+    sig = _convolution_cache_signature(g_grid, n_sub)
+    key = (sig, n_sub, table_path, gradus_idx)
 
-    cached = lock(REFLECTION_CACHE_LOCK) do
-        get(REFLECTION_SPECTRUM_CACHE, key, nothing)
+    cached = lock(MATRIX_CACHE_LOCK) do
+        get(CONVOLUTION_MATRIX_CACHE, key, nothing)
     end
     if cached !== nothing
-        REFLECTION_CACHE_HITS[] += 1
+        MATRIX_CACHE_HITS[] += 1
         return cached
     end
 
-    REFLECTION_CACHE_MISSES[] += 1
-    spec = _convolved_table_spectrum(
-        table,
-        gradus_params,
-        refl_params;
-        g_grid = g_grid,
+    MATRIX_CACHE_MISSES[] += 1
+    gradus_params = _gradus_grid_point_params(gradus_idx)
+    _, L = line_profile_kernel(gradus_params; g_grid = g_grid)
+    M = build_convolution_matrix(
+        table.energy_lo,
+        table.energy_hi,
+        table.energy_lo,
+        table.energy_hi,
+        g_grid,
+        L;
         n_sub = n_sub,
     )
-    lock(REFLECTION_CACHE_LOCK) do
-        return get!(REFLECTION_SPECTRUM_CACHE, key, spec)
+    lock(MATRIX_CACHE_LOCK) do
+        return get!(CONVOLUTION_MATRIX_CACHE, key, M)
     end
+end
+
+function _interpolate_reflection_spectrum(
+    table::XspecTableModel,
+    refl_corners::Dict{NTuple{N_REFLECTION_PARAMS, Int}, Float64},
+)
+    n_bins = length(table.energy_lo)
+    R = zeros(Float64, n_bins)
+    for (refl_idx, weight) in refl_corners
+        refl_params = _reflection_grid_point_params(refl_idx)
+        R_corner = interpolate_table_spectrum(table, refl_params)
+        @inbounds for j in 1:n_bins
+            R[j] += weight * R_corner[j]
+        end
+    end
+    return R
 end
 
 function evaluate_spectrum_interpolated(
@@ -234,29 +273,35 @@ function evaluate_spectrum_interpolated(
     verbose::Bool = false,
 )
     table = get_table(table_path)
-    corners = _physics_interpolation_corners(params)
-    n_bins = length(energy_edges) - 1
-    output = zeros(Float64, n_bins)
+    resolved_path = _resolve_table_path(table_path)
+    gradus_params, refl_params = _split_physics_params(params)
+    refl_corners = _multilinear_corners(REFLECTION_PARAM_GRIDS, refl_params)
+    gradus_corners = _multilinear_corners(GRADUS_PARAM_GRIDS, gradus_params)
 
-    for (idx, weight) in corners
-        convolved = _get_or_compute_convolved_spectrum(
+    R_interp = _interpolate_reflection_spectrum(table, refl_corners)
+    convolved = zeros(Float64, length(R_interp))
+    for (gradus_idx, weight) in gradus_corners
+        M = _get_or_compute_convolution_matrix(
             table,
-            _resolve_table_path(table_path),
-            idx;
+            resolved_path,
+            gradus_idx;
             g_grid = g_grid,
             n_sub = n_sub,
         )
-        rebinned = _rebin_to_energy_edges(convolved, table.energy_lo, table.energy_hi, energy_edges)
-        @inbounds for i in eachindex(output)
-            output[i] += weight * rebinned[i]
+        blurred = M * R_interp
+        @inbounds for i in eachindex(convolved)
+            convolved[i] += weight * blurred[i]
         end
     end
 
+    output = _rebin_to_energy_edges(convolved, table.energy_lo, table.energy_hi, energy_edges)
+
     if verbose
         println(
-            "GradusXSPEC: reflection interpolation at ($(_format_physics_grid_point(params))) ",
-            "from $(length(corners)) corner(s); cache hits=$(REFLECTION_CACHE_HITS[]), ",
-            "misses=$(REFLECTION_CACHE_MISSES[])",
+            "GradusXSPEC: reflection at ($(_format_gradus_grid_point(gradus_params)); ",
+            "$(_format_reflection_grid_point(refl_params))) from ",
+            "$(length(gradus_corners)) Gradus and $(length(refl_corners)) reflection corner(s); ",
+            "matrix cache hits=$(MATRIX_CACHE_HITS[]), misses=$(MATRIX_CACHE_MISSES[])",
         )
     end
 

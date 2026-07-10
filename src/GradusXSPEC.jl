@@ -26,7 +26,6 @@ export default_g_grid,
     evaluate_spectrum_interpolated,
     evaluate_line_spectrum
 
-const LINE_PARAM_GRIDS = ntuple(i -> build_parameter_grid(GRADUS_PARAMETERS[i]), N_GRADUS_PARAMS)
 const LINE_CACHE_LOCK = ReentrantLock()
 const LINE_SPECTRUM_CACHE = Dict{Tuple{UInt64, NTuple{N_GRADUS_PARAMS, Int}}, Vector{Float64}}()
 const VERBOSE = Ref(false)
@@ -47,58 +46,6 @@ function _apply_init_config(init::Ptr{Cchar})
     _apply_init_config(parse_init_string(init))
 end
 
-function _format_line_grid_point(params::NTuple{N_GRADUS_PARAMS, Float64})
-    parts = String[]
-    for (i, spec) in pairs(GRADUS_PARAMETERS)
-        push!(parts, "$(spec.name)=$(params[i])")
-    end
-    return join(parts, ", ")
-end
-
-function _line_grid_bounds_and_weight(value::Float64, grid::Vector{Float64})
-    clamped = clamp(value, first(grid), last(grid))
-    hi = searchsortedfirst(grid, clamped)
-    if hi <= 1
-        return (1, 1, 0.0)
-    elseif hi > length(grid)
-        idx = length(grid)
-        return (idx, idx, 0.0)
-    elseif grid[hi] == clamped
-        return (hi, hi, 0.0)
-    else
-        lo = hi - 1
-        θ = (clamped - grid[lo]) / (grid[hi] - grid[lo])
-        return (lo, hi, θ)
-    end
-end
-
-function _line_interpolation_corners(params::NTuple{N_GRADUS_PARAMS, Float64})
-    bounds = ntuple(i -> _line_grid_bounds_and_weight(params[i], LINE_PARAM_GRIDS[i]), N_GRADUS_PARAMS)
-    corners = Dict{NTuple{N_GRADUS_PARAMS, Int}, Float64}()
-    for mask in 0:(UInt(1) << N_GRADUS_PARAMS) - 1
-        idx = ntuple(
-            i -> ((mask >> (i - 1)) & UInt(1)) == UInt(1) ? bounds[i][2] : bounds[i][1],
-            N_GRADUS_PARAMS,
-        )
-        weight = 1.0
-        for i in 1:N_GRADUS_PARAMS
-            θ = bounds[i][3]
-            if ((mask >> (i - 1)) & UInt(1)) == UInt(1)
-                weight *= θ
-            else
-                weight *= (1 - θ)
-            end
-        end
-        if weight > 0
-            corners[idx] = get(corners, idx, 0.0) + weight
-        end
-    end
-    return corners
-end
-
-function _line_grid_point_params(idx::NTuple{N_GRADUS_PARAMS, Int})
-    return ntuple(i -> LINE_PARAM_GRIDS[i][idx[i]], N_GRADUS_PARAMS)
-end
 
 function _get_or_compute_line_spectrum(
     energy_sig::UInt64,
@@ -106,21 +53,21 @@ function _get_or_compute_line_spectrum(
     energies::AbstractVector{<:Real},
 )
     key = (energy_sig, idx)
-    grid_params = _line_grid_point_params(idx)
+    grid_params = _gradus_grid_point_params(idx)
     cached = lock(LINE_CACHE_LOCK) do
         get(LINE_SPECTRUM_CACHE, key, nothing)
     end
     if cached !== nothing
         LINE_CACHE_HITS[] += 1
         if _verbose_enabled()
-            println("GradusXSPEC: using cached line spectrum at ($(_format_line_grid_point(grid_params)))")
+            println("GradusXSPEC: using cached line spectrum at ($(_format_gradus_grid_point(grid_params)))")
         end
         return cached
     end
 
     LINE_CACHE_MISSES[] += 1
     if _verbose_enabled()
-        println("GradusXSPEC: evaluating line profile at ($(_format_line_grid_point(grid_params)))")
+        println("GradusXSPEC: evaluating line profile at ($(_format_gradus_grid_point(grid_params)))")
     end
     spec = line_profile_on_energy_edges(energies, grid_params)
     lock(LINE_CACHE_LOCK) do
@@ -138,7 +85,7 @@ function evaluate_line_spectrum(
     energy_edges::AbstractVector{<:Real},
     params::NTuple{N_GRADUS_PARAMS, Float64},
 )
-    corners = _line_interpolation_corners(params)
+    corners = _multilinear_corners(GRADUS_PARAM_GRIDS, params)
     energy_sig = _energy_signature(energy_edges)
     output = zeros(Float64, length(energy_edges) - 1)
     for (idx, weight) in corners
