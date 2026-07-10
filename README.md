@@ -30,12 +30,21 @@ julia --project=. src/build_lib.jl
 ### 2. Create the XSPEC model
 
 ```sh
+./build-xspec.sh
+```
+
+This runs `clean-xspec-package.sh`, `initpackage`, `patch-xspec-makefile.sh`, and `hmake`. Use `./build-xspec.sh --full` for a full clean rebuild (removes the existing `Makefile` and library first). Requires `HEADAS` to be set.
+
+Manual steps, if preferred:
+
+```sh
+./clean-xspec-package.sh
 initpackage gradus model.dat .
 ./patch-xspec-makefile.sh
 hmake
 ```
 
-`initpackage` generates a fresh `Makefile` for the local model. That Makefile does not know about the GradusXSPEC shared library, so `patch-xspec-makefile.sh` inserts the required rpath and link flags into `HD_SHLIB_LIBS`. The script is idempotent (safe to run twice) and anchors on the `-lXS` line rather than fixed line numbers, so it should survive minor HEASOFT/Makefile changes better than a static patch file.
+`initpackage` generates a fresh `Makefile` for the local model. If you re-run it after changing `model.dat`, remove stale `lpack_<model>.*` files first with `./clean-xspec-package.sh` (the model name is read from `model.dat`). That Makefile does not know about the GradusXSPEC shared library, so `patch-xspec-makefile.sh` inserts the required rpath and link flags into `HD_SHLIB_LIBS`. The script is idempotent (safe to run twice) and anchors on the `-lXS` line rather than fixed line numbers, so it should survive minor HEASOFT/Makefile changes better than a static patch file.
 
 ### 3. Test the model
 

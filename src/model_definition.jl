@@ -109,11 +109,20 @@ const REFLECTION_PARAMETERS = (
     ),
 )
 
-# Combined parameter tuple used once reflection convolution is wired into XSPEC.
-const MODEL_PARAMETERS = (GRADUS_PARAMETERS..., REFLECTION_PARAMETERS...)
+# Combined physics parameters for the reflection model (excludes norm).
+const PHYSICS_PARAMETERS = (GRADUS_PARAMETERS..., REFLECTION_PARAMETERS...)
 
+const N_PHYSICS_PARAMS = length(PHYSICS_PARAMETERS)
 const N_GRADUS_PARAMS = length(GRADUS_PARAMETERS)
 const N_REFLECTION_PARAMS = length(REFLECTION_PARAMETERS)
+
+# Parameters listed in model.dat for the reflection model: 9 physics + *redshift.
+# XSPEC adds `norm` automatically for additive models (do not list it here).
+const N_MODEL_DAT_PARAMS = N_PHYSICS_PARAMS + 1
+const N_XSPEC_FUNC_PARAMS = N_PHYSICS_PARAMS
+
+# Backwards-compatible alias used before reflection wiring.
+const MODEL_PARAMETERS = PHYSICS_PARAMETERS
 
 function build_parameter_grid(spec)
     minv = Float64(spec.hard_min)
@@ -134,9 +143,9 @@ function build_parameter_grid(spec)
     return values
 end
 
-function model_dat_text(; table_path::AbstractString = DEFAULT_TABLE_PATH, include_reflection::Bool = false)
-    params = include_reflection ? MODEL_PARAMETERS : GRADUS_PARAMETERS
-    n_params = length(params)
+function model_dat_text(; table_path::AbstractString = DEFAULT_TABLE_PATH, include_reflection::Bool = true)
+    params = include_reflection ? PHYSICS_PARAMETERS : GRADUS_PARAMETERS
+    n_params = include_reflection ? N_MODEL_DAT_PARAMS : length(params)
     init_string = include_reflection ? table_path : "0"
     lines = String[]
     push!(
@@ -149,6 +158,9 @@ function model_dat_text(; table_path::AbstractString = DEFAULT_TABLE_PATH, inclu
             lines,
             "$(spec.name) $(unit) $(spec.initial) $(spec.soft_min) $(spec.hard_min) $(spec.soft_max) $(spec.hard_max) $(spec.delta)",
         )
+    end
+    if include_reflection
+        push!(lines, "*redshift \" \" 0.0")
     end
     return join(lines, "\n") * "\n"
 end

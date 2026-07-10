@@ -14,4 +14,4 @@ create_library(
 )
 
 # Create the model.dat file to go along with the model.
-write("model.dat", model_dat_text())
+write("model.dat", model_dat_text(; include_reflection = true))

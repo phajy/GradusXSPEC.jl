@@ -20,6 +20,7 @@ julia --project=. -e 'using Pkg; Pkg.add("Plots")'
 julia --project=. scripts/validate_table.jl
 julia --project=. scripts/validate_line_profile.jl
 julia --project=. scripts/validate_convolution.jl
+julia --project=. scripts/validate_spectrum.jl
 ```
 
 The line-profile script calls Gradus and can take ~1–2 minutes on first run.
@@ -44,6 +45,9 @@ keV)**, which is easier to interpret on irregular energy grids.
 |-----------|------------|
 | Gradus (lamppost) | spin=0.998, Eddington=0.1, inc=30°, h=3 r_g |
 | xillver reflection | Γ=2.0, A_Fe=1.0, log ξ=2.0, n_e=17, incl=45° |
+
+XSPEC adds `norm` and applies `*redshift` from `model.dat`; the Julia API uses
+the nine physics parameters only.
 
 ## Figures
 
@@ -98,11 +102,12 @@ grid. Plotted as flux per keV; integrated flux per bin is conserved by the rebin
 ## Pipeline (current status)
 
 ```text
-xillver FITS  →  R(E)           [table_model.jl]
-Gradus params  →  L(g)           [line_profile.jl]
-R, L           →  F = M * R      [convolution.jl]
-F              →  XSPEC energies [rebin_flux, step 4 TODO]
+xillver FITS  →  R(E)              [table_model.jl]
+Gradus params  →  L(g)              [line_profile.jl]
+R, L           →  F = M * R         [convolution.jl]
+F              →  XSPEC energies    [spectrum.jl: evaluate_spectrum]
 ```
 
-Steps 1–3 are implemented and testable from Julia. Step 4 (`evaluate_spectrum`
-orchestration + XSPEC wrapper) is next.
+`evaluate_spectrum` / `evaluate_spectrum_interpolated` orchestrate the full
+pipeline in Julia. The XSPEC entry point (`gradusxspec`) calls the interpolated
+version with nine physics parameters; `*redshift` and `norm` are handled by XSPEC.
