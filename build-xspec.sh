@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build the XSPEC local model package for GradusXSPEC.
 #
-# Chains: clean stale initpackage files -> initpackage -> patch Makefile -> hmake
+# Chains: clean stale initpackage files -> initpackage -> patch Makefile ->
+#         fix HEASOFT F77 libs -> hmake
 #
 # Prerequisites:
 #   - HEADAS set (e.g. source $HEADAS/headas-init.sh)
@@ -33,7 +34,7 @@ if [[ ! -f model.dat ]]; then
   exit 1
 fi
 
-MODEL_NAME="$(awk 'NF { print $1; exit }' model.dat)"
+PACKAGE_NAME="$(julia --project=. -e 'include("src/model_definition.jl"); print(PACKAGE_NAME)')"
 MODEL_DAT="model.dat"
 
 for cmd in initpackage hmake; do
@@ -50,13 +51,17 @@ else
   ./clean-xspec-package.sh
 fi
 
-echo "==> Running initpackage ${MODEL_NAME} ${MODEL_DAT} ."
-initpackage "${MODEL_NAME}" "${MODEL_DAT}" .
+echo "==> Running initpackage ${PACKAGE_NAME} ${MODEL_DAT} ."
+initpackage "${PACKAGE_NAME}" "${MODEL_DAT}" .
 
 echo "==> Patching Makefile for GradusXSPEC"
 ./patch-xspec-makefile.sh
 
+echo "==> Refreshing HEASOFT Fortran library paths (gcc@14)"
+./fix-heasoft-f77libs.sh
+
 echo "==> Building with hmake"
 hmake
 
-echo "Done. Load in XSPEC with: lmod ${MODEL_NAME} ."
+echo "Done. Load in XSPEC with: lmod ${PACKAGE_NAME} ."
+echo "Models: gradus_lamp_ss, gradus_lamp_thin"

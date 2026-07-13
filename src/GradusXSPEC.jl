@@ -7,6 +7,8 @@ include("line_profile.jl")
 include("table_model.jl")
 include("convolution.jl")
 include("spectrum.jl")
+include("model_runtime.jl")
+include("monitor.jl")
 
 export default_g_grid,
     g_midpoints_from_energy_edges,
@@ -24,10 +26,19 @@ export default_g_grid,
     InitConfig,
     evaluate_spectrum,
     evaluate_spectrum_interpolated,
-    evaluate_line_spectrum
+    evaluate_line_spectrum,
+    ModelRuntime,
+    get_model_runtime,
+    build_model_runtimes,
+    PACKAGE_NAME,
+    ALL_MODELS,
+    LAMP_SS_MODEL,
+    LAMP_THIN_MODEL,
+    TEST_GAUSS_MODEL
 
 const LINE_CACHE_LOCK = ReentrantLock()
-const LINE_SPECTRUM_CACHE = Dict{Tuple{UInt64, NTuple{N_GRADUS_PARAMS, Int}}, Vector{Float64}}()
+const LINE_SPECTRUM_CACHE =
+    Dict{Tuple{String, UInt64, Tuple{Vararg{Int}}}, Vector{Float64}}()
 const VERBOSE = Ref(false)
 const LINE_CACHE_HITS = Ref(0)
 const LINE_CACHE_MISSES = Ref(0)
@@ -40,70 +51,133 @@ function _apply_init_config(cfg::InitConfig)
     if cfg.verbose
         VERBOSE[] = true
     end
+    _apply_monitor_config(cfg)
 end
 
 function _apply_init_config(init::Ptr{Cchar})
     _apply_init_config(parse_init_string(init))
 end
 
-
 function _get_or_compute_line_spectrum(
+    rt::ModelRuntime,
     energy_sig::UInt64,
-    idx::NTuple{N_GRADUS_PARAMS, Int},
+    idx::Tuple{Vararg{Int, N}},
     energies::AbstractVector{<:Real},
-)
-    key = (energy_sig, idx)
-    grid_params = _gradus_grid_point_params(idx)
+) where {N}
+    key = (rt.definition.name, energy_sig, idx)
+    grid_params = _gradus_grid_point_params(rt, idx)
     cached = lock(LINE_CACHE_LOCK) do
         get(LINE_SPECTRUM_CACHE, key, nothing)
     end
     if cached !== nothing
         LINE_CACHE_HITS[] += 1
         if _verbose_enabled()
-            println("GradusXSPEC: using cached line spectrum at ($(_format_gradus_grid_point(grid_params)))")
+            println(
+                "GradusXSPEC: using cached line spectrum for $(rt.definition.name) at ($(_format_gradus_grid_point(rt, grid_params)))",
+            )
         end
         return cached
     end
 
     LINE_CACHE_MISSES[] += 1
     if _verbose_enabled()
-        println("GradusXSPEC: evaluating line profile at ($(_format_gradus_grid_point(grid_params)))")
+        println(
+            "GradusXSPEC: evaluating line profile for $(rt.definition.name) at ($(_format_gradus_grid_point(rt, grid_params)))",
+        )
     end
-    spec = line_profile_on_energy_edges(energies, grid_params)
+    spec = line_profile_on_energy_edges(energies, grid_params, rt.definition.disc_variant)
     lock(LINE_CACHE_LOCK) do
         return get!(LINE_SPECTRUM_CACHE, key, spec)
     end
 end
 
 """
-    evaluate_line_spectrum(energy_edges, gradus_params)
+    evaluate_line_spectrum(energy_edges, gradus_params; model=LAMP_SS_MODEL.name)
 
 Evaluate the standalone lamppost line profile on `energy_edges` with parameter
 grid interpolation and caching.
 """
 function evaluate_line_spectrum(
     energy_edges::AbstractVector{<:Real},
-    params::NTuple{N_GRADUS_PARAMS, Float64},
-)
-    corners = _multilinear_corners(GRADUS_PARAM_GRIDS, params)
+    params::Tuple{Vararg{Float64, N}};
+    model::AbstractString = LAMP_SS_MODEL.name,
+) where {N}
+    rt = get_model_runtime(model)
+    corners = _multilinear_corners(Tuple(rt.gradus_grids), params)
     energy_sig = _energy_signature(energy_edges)
     output = zeros(Float64, length(energy_edges) - 1)
     for (idx, weight) in corners
-        spec = _get_or_compute_line_spectrum(energy_sig, idx, energy_edges)
+        spec = _get_or_compute_line_spectrum(rt, energy_sig, idx, energy_edges)
         @inbounds for i in eachindex(output)
             output[i] += weight * spec[i]
         end
     end
     if _verbose_enabled()
         println(
-            "GradusXSPEC: line profile from $(length(corners)) corner(s); ",
+            "GradusXSPEC: $(rt.definition.name) line profile from $(length(corners)) corner(s); ",
             "cache hits=$(LINE_CACHE_HITS[]), misses=$(LINE_CACHE_MISSES[])",
         )
     end
     return output
 end
 
-@ccallable function gradusxspec(
+function evaluate_line_spectrum(
+    energy_edges::AbstractVector{<:Real},
+    params::NTuple{N_GRADUS_PARAMS, Float64},
+)
+    return evaluate_line_spectrum(energy_edges, params; model = LAMP_SS_MODEL.name)
+end
+
+function _xspec_model_entry(
+    rt::ModelRuntime,
+    energy::Ptr{Cdouble},
+    Nflux::Cint,
+    parameter::Ptr{Cdouble},
+    init::Ptr{Cchar},
+    flux::Ptr{Cdouble},
+)::Cint
+    cfg = parse_init_string(init)
+    _apply_init_config(cfg)
+    # XSPEC passes Nflux energy bins and Nflux+1 bin edges.
+    energies = unsafe_wrap(Array, energy, Int(Nflux) + 1)
+    n_params = n_physics_params(rt)
+    params = ntuple(i -> Float64(unsafe_load(parameter, i)), n_params)
+    if _verbose_enabled()
+        gradus, refl = _split_physics_params(rt, params)
+        gradus_text = join(
+            ["$(rt.definition.gradus_parameters[i].name)=$(gradus[i])" for i in 1:n_gradus_params(rt)],
+            ", ",
+        )
+        refl_text = join(
+            [
+                "$(rt.definition.reflection_parameters[i].name)=$(refl[i])"
+                for i in 1:n_reflection_params(rt)
+            ],
+            ", ",
+        )
+        println("GradusXSPEC: $(rt.definition.name) reflection request ($gradus_text; $refl_text)")
+    end
+    flux_array = evaluate_spectrum_interpolated(
+        rt,
+        energies,
+        params;
+        table_path = cfg.table_path,
+        verbose = _verbose_enabled(),
+    )
+
+    n_flux = Int(Nflux)
+    length(flux_array) == n_flux || error(
+        "GradusXSPEC: expected $n_flux flux bins, got $(length(flux_array))",
+    )
+    for i in 1:n_flux
+        unsafe_store!(flux, flux_array[i], i)
+    end
+
+    return 0
+end
+
+function _xspec_model_entry_catch(
+    rt::ModelRuntime,
     energy::Ptr{Cdouble},
     Nflux::Cint,
     parameter::Ptr{Cdouble},
@@ -113,35 +187,95 @@ end
     init::Ptr{Cchar},
 )::Cint
     try
-        cfg = parse_init_string(init)
-        _apply_init_config(cfg)
-        energies = unsafe_wrap(Array, energy, Nflux)
-        params = ntuple(i -> Float64(unsafe_load(parameter, i)), N_XSPEC_FUNC_PARAMS)
-        if _verbose_enabled()
-            gradus, refl = _split_physics_params(params)
-            gradus_text = join(["$(GRADUS_PARAMETERS[i].name)=$(gradus[i])" for i in 1:N_GRADUS_PARAMS], ", ")
-            refl_text = join(["$(REFLECTION_PARAMETERS[i].name)=$(refl[i])" for i in 1:N_REFLECTION_PARAMS], ", ")
-            println("GradusXSPEC: reflection request ($gradus_text; $refl_text)")
-        end
-        flux_array = evaluate_spectrum_interpolated(
-            energies,
-            params;
-            table_path = cfg.table_path,
-            verbose = _verbose_enabled(),
-        )
-
-        for i in 1:length(flux_array)
-            unsafe_store!(flux, flux_array[i], i)
-        end
-        if Nflux > length(flux_array)
-            unsafe_store!(flux, 0.0, Nflux)
-        end
-
-        return 0
+        return _xspec_model_entry(rt, energy, Nflux, parameter, init, flux)
     catch e
-        @error "Error in gradusxspec" exception = e
+        @error "Error in $(rt.definition.cc_name)" exception = e
         return 1
     end
+end
+
+@ccallable function graduslampsjxspec(
+    energy::Ptr{Cdouble},
+    Nflux::Cint,
+    parameter::Ptr{Cdouble},
+    spectrum::Cint,
+    flux::Ptr{Cdouble},
+    fluxError::Ptr{Cdouble},
+    init::Ptr{Cchar},
+)::Cint
+    return _xspec_model_entry_catch(
+        MODEL_RUNTIMES[LAMP_SS_MODEL.name],
+        energy,
+        Nflux,
+        parameter,
+        spectrum,
+        flux,
+        fluxError,
+        init,
+    )
+end
+
+@ccallable function graduslampthinxspec(
+    energy::Ptr{Cdouble},
+    Nflux::Cint,
+    parameter::Ptr{Cdouble},
+    spectrum::Cint,
+    flux::Ptr{Cdouble},
+    fluxError::Ptr{Cdouble},
+    init::Ptr{Cchar},
+)::Cint
+    return _xspec_model_entry_catch(
+        MODEL_RUNTIMES[LAMP_THIN_MODEL.name],
+        energy,
+        Nflux,
+        parameter,
+        spectrum,
+        flux,
+        fluxError,
+        init,
+    )
+end
+
+@ccallable function testgaussxspec(
+    energy::Ptr{Cdouble},
+    Nflux::Cint,
+    parameter::Ptr{Cdouble},
+    spectrum::Cint,
+    flux::Ptr{Cdouble},
+    fluxError::Ptr{Cdouble},
+    init::Ptr{Cchar},
+)::Cint
+    return _xspec_model_entry_catch(
+        MODEL_RUNTIMES[TEST_GAUSS_MODEL.name],
+        energy,
+        Nflux,
+        parameter,
+        spectrum,
+        flux,
+        fluxError,
+        init,
+    )
+end
+
+# Backwards-compatible entry point for the original single-model build.
+@ccallable function gradusxspec(
+    energy::Ptr{Cdouble},
+    Nflux::Cint,
+    parameter::Ptr{Cdouble},
+    spectrum::Cint,
+    flux::Ptr{Cdouble},
+    fluxError::Ptr{Cdouble},
+    init::Ptr{Cchar},
+)::Cint
+    return graduslampsjxspec(energy, Nflux, parameter, spectrum, flux, fluxError, init)
+end
+
+function line_spectrum_cache_size()
+    return length(LINE_SPECTRUM_CACHE)
+end
+
+function line_spectrum_cache_stats()
+    return LINE_CACHE_HITS[], LINE_CACHE_MISSES[]
 end
 
 end

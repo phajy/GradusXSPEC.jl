@@ -28,10 +28,15 @@ model.dat
 
 # XSPEC initpackage / hmake artifacts
 gradusFunctionMap.*
+gradusxspecFunctionMap.*
 lpack_gradus.*
+lpack_gradusxspec.*
 libgradus.*
+libgradusxspec.*
 pkgIndex.tcl
 *.o
 pgplot.ps
+pgplot.png
 xillverD-5.fits
+gradusxspec_monitor.txt
 docs/figures/

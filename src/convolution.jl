@@ -2,7 +2,7 @@
     interpolate_line_kernel(g_grid, L, g) -> Float64
 
 Linearly interpolate a line-profile kernel `L(g)` tabulated on `g_grid`.
-Values outside the grid are clamped to the endpoints.
+Values outside the grid are treated as zero (finite kernel support).
 """
 function interpolate_line_kernel(
     g_grid::AbstractVector{<:Real},
@@ -15,8 +15,8 @@ function interpolate_line_kernel(
     x = Float64(g)
     x_min = Float64(first(g_grid))
     x_max = Float64(last(g_grid))
-    x <= x_min && return Float64(L[1])
-    x >= x_max && return Float64(L[end])
+    x < x_min && return 0.0
+    x > x_max && return 0.0
 
     hi = searchsortedfirst(g_grid, x)
     if hi <= 1
@@ -57,7 +57,10 @@ function _integrate_kernel_over_bins(
             e_mid = sqrt(e_lo * e_hi)
             dE = e_hi - e_lo
             g = o_mid / e_mid
-            integral += interpolate_line_kernel(g_grid, L, g) * dO * dE
+            # Photon-number conservation for g = E_obs/E_em with ∫ L(g) dg = 1:
+            #   N_obs(E_o) = ∫ L(E_o/E_e) N_em(E_e) dE_e / E_e
+            # The 1/E_e is the Jacobian from dg → dE_e (equivalent to dg/g).
+            integral += interpolate_line_kernel(g_grid, L, g) * dO * dE / e_mid
         end
     end
     return integral / em_width
@@ -70,10 +73,11 @@ Build the matrix `M` for blurring a rest-frame reflection spectrum:
 
     F = M * R
 
-where `R[j]` is the integrated flux in emission bin `j` and `F[i]` is the
-integrated flux in observed bin `i`. The kernel `L(g)` must have unit area in
-`g = ν_obs / ν_em`. Each matrix entry integrates `L` over the corresponding
-emission and observation bins.
+where `R[j]` is the integrated photon flux in emission bin `j` and `F[i]` is the
+integrated photon flux in observed bin `i`. The kernel `L(g)` must have unit
+area in `g = E_obs / E_em`. The integrand includes the Jacobian `1/E_em` so that
+`∫ L(g) dg = 1` implies photon-number conservation (`∑ F ≈ ∑ R` aside from
+photons shifted outside the energy grid).
 """
 function build_convolution_matrix(
     em_lo::AbstractVector{<:Real},

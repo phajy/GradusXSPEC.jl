@@ -50,9 +50,25 @@ function test_delta_kernel_on_log_grid()
     L = narrow_kernel(g_grid; g0 = 1.0, sigma = 0.001)
     F = convolve_reflection(R, em_lo, em_hi, g_grid, L; n_sub = 16)
     shape_err = relative_l2(F ./ max(sum(F), eps()), R ./ max(sum(R), eps()))
+    flux_ratio = sum(F) / sum(R)
     println("Synthetic delta-kernel shape error (relative L2): ", shape_err)
+    println("Synthetic delta-kernel flux ratio sum(F)/sum(R): ", flux_ratio)
     println("Synthetic peak bin shift: ", argmax(F) - argmax(R))
-    return shape_err < 0.06 && argmax(F) == argmax(R)
+    return shape_err < 0.06 && argmax(F) == argmax(R) && abs(flux_ratio - 1) < 0.05
+end
+
+function test_flux_conservation(em_lo, em_hi, R, g_grid, L)
+    F = convolve_reflection(R, em_lo, em_hi, g_grid, L; n_sub = 4)
+    # Restrict conservation check to energies well inside the grid so photons
+    # are not shifted out of band by the finite g support.
+    mids = (em_lo .+ em_hi) ./ 2
+    interior = findall(x -> 2.0 <= x <= 10.0, mids)
+    M = build_convolution_matrix(em_lo, em_hi, em_lo, em_hi, g_grid, L; n_sub = 4)
+    colsums = vec(sum(M; dims = 1))
+    mean_col = sum(colsums[interior]) / length(interior)
+    println("Interior column-sum mean (expect ≈ 1): ", mean_col)
+    println("Full-band flux ratio sum(F)/sum(R): ", sum(F) / sum(R))
+    return abs(mean_col - 1) < 0.05
 end
 
 function test_matrix_matches_direct(em_lo, em_hi, R, g_grid, L)
@@ -100,8 +116,9 @@ function main()
     L = narrow_kernel(g_grid; g0 = 1.0, sigma = 0.05)
     ok_matrix = test_matrix_matches_direct(em_lo, em_hi, R, g_grid, L)
     ok_rebin = test_rebin_conserves_flux(em_lo, em_hi, R)
+    ok_flux = test_flux_conservation(em_lo, em_hi, R, g_grid, L)
 
-    if ok_synthetic && ok_matrix && ok_rebin
+    if ok_synthetic && ok_matrix && ok_rebin && ok_flux
         println("All convolution checks passed.")
     else
         error("Convolution validation failed.")

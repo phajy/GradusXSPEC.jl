@@ -19,27 +19,29 @@ if [[ "${1:-}" == "--full" ]]; then
 fi
 
 if [[ -f model.dat ]]; then
-  MODEL_NAME="$(awk 'NF { print $1; exit }' model.dat)"
+  PACKAGE_NAME="$(julia --project=. -e 'include("src/model_definition.jl"); print(PACKAGE_NAME)')"
 elif [[ -f src/model_definition.jl ]]; then
-  MODEL_NAME="$(julia --project=. -e 'include("src/model_definition.jl"); print(MODEL_NAME)')"
+  PACKAGE_NAME="$(julia --project=. -e 'include("src/model_definition.jl"); print(PACKAGE_NAME)')"
 else
-  echo "error: could not determine model name (run ./build-julia.sh first)" >&2
+  echo "error: could not determine package name (run ./build-julia.sh first)" >&2
   exit 1
 fi
 
-echo "Cleaning initpackage artifacts for model: ${MODEL_NAME}"
+echo "Cleaning initpackage artifacts for package: ${PACKAGE_NAME}"
 
 rm -f \
-  "lpack_${MODEL_NAME}.cxx" \
-  "lpack_${MODEL_NAME}.o" \
-  "${MODEL_NAME}FunctionMap.cxx" \
-  "${MODEL_NAME}FunctionMap.h"
+  "lpack_${PACKAGE_NAME}.cxx" \
+  "lpack_${PACKAGE_NAME}.o" \
+  "${PACKAGE_NAME}FunctionMap.cxx" \
+  "${PACKAGE_NAME}FunctionMap.h"
 
 if [[ "$FULL_CLEAN" == true ]]; then
   shopt -s nullglob
-  rm -f "lib${MODEL_NAME}".* Makefile pkgIndex.tcl *.bck
+  rm -f "lib${PACKAGE_NAME}".* Makefile pkgIndex.tcl *.bck
+  # Remove legacy single-model package artifacts from before the rename.
+  rm -f lpack_gradus.* gradusFunctionMap.* libgradus.*
   shopt -u nullglob
-  echo "Full clean: removed Makefile, pkgIndex.tcl, and lib${MODEL_NAME}.*"
+  echo "Full clean: removed Makefile, pkgIndex.tcl, and lib${PACKAGE_NAME}.*"
 fi
 
 echo "Done."

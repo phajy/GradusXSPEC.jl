@@ -13,5 +13,5 @@ create_library(
     include_lazy_artifacts=true
 )
 
-# Create the model.dat file to go along with the model.
-write("model.dat", model_dat_text(; include_reflection = true))
+# Create model.dat for all XSPEC models in this package.
+write("model.dat", model_dat_text())
