@@ -83,6 +83,46 @@ Model Model Component  Parameter  Unit     Value
 
 ![XSPEC plot output](figs/pgplot.png)
 
+## Diagnostics
+
+Terminal logging and a fit-monitor file can be enabled via environment variables or tokens in the XSPEC model init string (after the table path).
+
+### Environment variables
+
+| Variable | Effect |
+|----------|--------|
+| `GRADUSXSPEC_VERBOSE=1` | Print per-evaluation parameter and cache messages to the terminal (`true` / `yes` also work) |
+| `GRADUSXSPEC_MONITOR=1` | Write fit diagnostics to `gradusxspec_monitor.txt` in the repo root |
+| `GRADUSXSPEC_MONITOR=/path/to/file` | Same, but use a custom output path |
+| `GRADUSXSPEC_MONITOR_INTERVAL=N` | Refresh the monitor file every `N` evaluations (default 10) |
+
+Example:
+
+```sh
+export GRADUSXSPEC_VERBOSE=1
+export GRADUSXSPEC_MONITOR=1
+xspec
+```
+
+### Init-string tokens
+
+The model init string starts with the reflection table path (default `xillverD-5.fits`). Extra tokens may follow:
+
+| Token | Effect |
+|-------|--------|
+| `verbose` | Same as `GRADUSXSPEC_VERBOSE` |
+| `monitor` | Enable the monitor file at the default path |
+| `monitor=/path/to/file` | Enable the monitor file at a custom path |
+| `monitor_interval=N` | Refresh interval (default 10) |
+
+In XSPEC, set these on the model’s init string, for example:
+
+```
+xillverD-5.fits verbose monitor
+```
+
+The monitor file records current parameters, interpolation brackets, fit-history histograms, and cache hit rates. It is gitignored.
+
 ## References
 
 - [Appendix C: Adding Models to XSPEC](https://heasarc.gsfc.nasa.gov/docs/software/xspec/manual/XSappendixLocal.html) — official HEASARC documentation for local models (`initpackage`, `model.dat`, `hmake`, `lmod`)
