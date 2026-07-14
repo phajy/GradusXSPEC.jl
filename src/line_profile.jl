@@ -50,6 +50,10 @@ function _build_accretion_disc(m::KerrMetric, ::NTuple{3, Float64}, ::Val{:thin}
     return ThinDisc(0.0, Inf)
 end
 
+function _build_accretion_disc(m::KerrMetric, ::NTuple{4, Float64}, ::Val{:thin})
+    return ThinDisc(0.0, Inf)
+end
+
 function _lamppost_geometry(params::NTuple{4, Float64})
     spin, _, inclination, height = params
     return spin, inclination, height
@@ -58,6 +62,44 @@ end
 function _lamppost_geometry(params::NTuple{3, Float64})
     spin, inclination, height = params
     return spin, inclination, height
+end
+
+function _ring_geometry(params::NTuple{4, Float64})
+    spin, inclination, radius, height = params
+    return spin, inclination, radius, height
+end
+
+function _build_corona(params::NTuple{N, Float64}, ::Val{:lamppost}) where {N}
+    _, _, height = _lamppost_geometry(params)
+    return LampPostModel(h = height)
+end
+
+function _build_corona(params::NTuple{4, Float64}, ::Val{:ring})
+    _, _, radius, height = _ring_geometry(params)
+    return RingCorona(; r = radius, h = height)
+end
+
+function _corona_n_samples(::Val{:lamppost})
+    return 128
+end
+
+function _corona_n_samples(::Val{:ring})
+    # RingCorona needs n_samples > 2 * extrema_iter (default 80).
+    return 256
+end
+
+"""
+Scalar emissivity for Gradus `lineprofile`.
+
+`RingApproximation` (from `RingCorona`) returns a length-1 vector from
+`emissivity_at(profile, r)` even for scalar `r`, which breaks transfer-function
+integration. Lamppost `RadialDiscProfile` already returns a scalar.
+"""
+function _scalar_emissivity(profile)
+    return r -> begin
+        ε = emissivity_at(profile, r)
+        return ε isa Number ? Float64(ε) : Float64(first(ε))
+    end
 end
 
 function _gaussian_line_profile(σ::Float64, g_bins::AbstractVector{<:Real})
@@ -106,28 +148,43 @@ end
 function _raw_line_profile(
     params::NTuple{N, Float64},
     g_bins::AbstractVector{<:Real},
+    corona_variant::Symbol,
     disc_variant::Symbol,
 ) where {N}
-    if disc_variant == :gauss
+    if corona_variant == :gauss || disc_variant == :gauss
         length(params) == 1 ||
             throw(ArgumentError("Gaussian kernel expects a single Sigma parameter"))
         return _gaussian_line_profile(params[1], g_bins)
     end
 
+    corona_variant in (:lamppost, :ring) ||
+        throw(ArgumentError("unsupported corona variant: $corona_variant"))
     disc_variant in (:ss, :thin) ||
         throw(ArgumentError("unsupported disc variant: $disc_variant"))
-    spin, inclination, height = _lamppost_geometry(params)
+
+    if corona_variant == :lamppost
+        spin, inclination, _ = _lamppost_geometry(params)
+    else
+        spin, inclination, _, _ = _ring_geometry(params)
+    end
+
     m = KerrMetric(M = 1.0, a = spin)
     d = _build_accretion_disc(m, params, Val(disc_variant))
     x = SVector(0.0, 1000.0, deg2rad(inclination), 0.0)
-    corona = LampPostModel(h = height)
-    profile = emissivity_profile(m, d, corona; n_samples = 128)
+    corona = _build_corona(params, Val(corona_variant))
+    profile = emissivity_profile(
+        m,
+        d,
+        corona;
+        n_samples = _corona_n_samples(Val(corona_variant)),
+    )
+    bins = collect(Float64.(g_bins))
     _, flux = lineprofile(
+        bins,
+        _scalar_emissivity(profile),
         m,
         x,
-        d,
-        profile;
-        bins = collect(Float64.(g_bins)),
+        d;
         method = TransferFunctionMethod(),
         maxrₑ = 400.0,
     )
@@ -135,25 +192,37 @@ function _raw_line_profile(
 end
 
 """
-    line_profile_kernel(params, disc_variant; g_grid=default_g_grid()) -> (g, L)
+    line_profile_kernel(params, corona_variant, disc_variant; g_grid=default_g_grid()) -> (g, L)
 
-Evaluate a unit-area line-profile kernel `L(g)` for the given lamppost parameters
-and accretion-disc variant (`:ss` or `:thin`).
+Evaluate a unit-area line-profile kernel `L(g)` for the given corona/disc geometry.
+`corona_variant` is `:lamppost`, `:ring`, or `:gauss`; `disc_variant` is `:ss`,
+`:thin`, or `:gauss`.
 """
 function line_profile_kernel(
     params::NTuple{N, Float64},
+    corona_variant::Symbol,
     disc_variant::Symbol;
     g_grid::AbstractVector{<:Real} = default_g_grid(),
 ) where {N}
     g = collect(Float64.(g_grid))
-    flux = _raw_line_profile(params, g, disc_variant)
+    flux = _raw_line_profile(params, g, corona_variant, disc_variant)
     area = _integrate_g(g, flux)
     area > 0 || error("line profile integral is zero; cannot normalize")
     return g, flux ./ area
 end
 
+# Backwards-compatible: disc_variant alone implies lamppost (or gauss for :gauss).
+function line_profile_kernel(
+    params::NTuple{N, Float64},
+    disc_variant::Symbol;
+    kwargs...,
+) where {N}
+    corona = disc_variant == :gauss ? :gauss : :lamppost
+    return line_profile_kernel(params, corona, disc_variant; kwargs...)
+end
+
 """
-    line_profile_on_energy_edges(energies, params, disc_variant) -> Vector{Float64}
+    line_profile_on_energy_edges(energies, params, corona_variant, disc_variant) -> Vector{Float64}
 
 Evaluate the line profile on the `g` midpoints implied by XSPEC energy edges.
 Flux is returned per energy bin and is not forced to unit area.
@@ -161,14 +230,24 @@ Flux is returned per energy bin and is not forced to unit area.
 function line_profile_on_energy_edges(
     energies::AbstractVector{<:Real},
     params::NTuple{N, Float64},
+    corona_variant::Symbol,
     disc_variant::Symbol,
 ) where {N}
     g_bins = g_midpoints_from_energy_edges(energies)
-    return _raw_line_profile(params, g_bins, disc_variant)
+    return _raw_line_profile(params, g_bins, corona_variant, disc_variant)
+end
+
+function line_profile_on_energy_edges(
+    energies::AbstractVector{<:Real},
+    params::NTuple{N, Float64},
+    disc_variant::Symbol,
+) where {N}
+    corona = disc_variant == :gauss ? :gauss : :lamppost
+    return line_profile_on_energy_edges(energies, params, corona, disc_variant)
 end
 
 # Backwards-compatible overload for the original four-parameter S&S model.
 line_profile_kernel(params::NTuple{4, Float64}; kwargs...) =
-    line_profile_kernel(params, :ss; kwargs...)
+    line_profile_kernel(params, :lamppost, :ss; kwargs...)
 line_profile_on_energy_edges(energies, params::NTuple{4, Float64}) =
-    line_profile_on_energy_edges(energies, params, :ss)
+    line_profile_on_energy_edges(energies, params, :lamppost, :ss)

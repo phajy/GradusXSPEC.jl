@@ -8,8 +8,9 @@ Call Gradus models from XSPEC.
 |------------|--------|------|---------------|
 | `gradus_lamp_ss` | Lamppost | Shakura–Sunyaev (thick) | spin, Eddington, inc, h + reflection |
 | `gradus_lamp_thin` | Lamppost | Thin disc | spin, inc, h + reflection |
+| `gradus_ring_thin` | Ring | Thin disc | spin, inc, r, h + reflection |
 
-Both models convolve an xillver reflection table with a relativistic lamppost line profile. Load the package once with `lmod gradusxspec .`, then use either model name in `model`.
+These models convolve an xillver reflection table with a Gradus relativistic line profile. Load the package once with `lmod gradusxspec .`, then use any model name in `model`.
 
 ## Prerequisites
 
@@ -67,7 +68,7 @@ lmod gradusxspec .
 model gradus_lamp_ss
 ```
 
-Set the model parameters, evaluate over a dummy energy grid, and use `iplot` to visualize the results. Use `model gradus_lamp_thin` for the thin-disc variant (no `Eddington` parameter).
+Set the model parameters, evaluate over a dummy energy grid, and use `iplot` to visualize the results. Use `model gradus_lamp_thin` for the thin-disc lamppost variant (no `Eddington` parameter), or `model gradus_ring_thin` for a co-rotating ring corona (`spin`, `inc`, `r`, `h`).
 
 ```
 ========================================================================

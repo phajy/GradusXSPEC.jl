@@ -34,6 +34,7 @@ export default_g_grid,
     ALL_MODELS,
     LAMP_SS_MODEL,
     LAMP_THIN_MODEL,
+    RING_THIN_MODEL,
     TEST_GAUSS_MODEL
 
 const LINE_CACHE_LOCK = ReentrantLock()
@@ -85,7 +86,12 @@ function _get_or_compute_line_spectrum(
             "GradusXSPEC: evaluating line profile for $(rt.definition.name) at ($(_format_gradus_grid_point(rt, grid_params)))",
         )
     end
-    spec = line_profile_on_energy_edges(energies, grid_params, rt.definition.disc_variant)
+    spec = line_profile_on_energy_edges(
+        energies,
+        grid_params,
+        rt.definition.corona_variant,
+        rt.definition.disc_variant,
+    )
     lock(LINE_CACHE_LOCK) do
         return get!(LINE_SPECTRUM_CACHE, key, spec)
     end
@@ -226,6 +232,27 @@ end
 )::Cint
     return _xspec_model_entry_catch(
         MODEL_RUNTIMES[LAMP_THIN_MODEL.name],
+        energy,
+        Nflux,
+        parameter,
+        spectrum,
+        flux,
+        fluxError,
+        init,
+    )
+end
+
+@ccallable function gradusringthinxspec(
+    energy::Ptr{Cdouble},
+    Nflux::Cint,
+    parameter::Ptr{Cdouble},
+    spectrum::Cint,
+    flux::Ptr{Cdouble},
+    fluxError::Ptr{Cdouble},
+    init::Ptr{Cchar},
+)::Cint
+    return _xspec_model_entry_catch(
+        MODEL_RUNTIMES[RING_THIN_MODEL.name],
         energy,
         Nflux,
         parameter,

@@ -91,6 +91,57 @@ const LAMP_THIN_GRADUS_PARAMETERS = (
     ),
 )
 
+const RING_THIN_GRADUS_PARAMETERS = (
+    (
+        name = "spin",
+        unit = "",
+        initial = 0.998,
+        soft_min = 0.0,
+        hard_min = 0.0,
+        soft_max = 0.998,
+        hard_max = 0.998,
+        delta = 0.05,
+        interpolation = :linear,
+    ),
+    (
+        name = "inc",
+        unit = "degrees",
+        initial = 30.0,
+        soft_min = 5.0,
+        hard_min = 5.0,
+        # Cap at 65°: Gradus transfer functions currently fail for some
+        # (spin, h) at inc ≥ 70° with maxrₑ = 400 (see reproduce_transfer_offset.jl).
+        soft_max = 65.0,
+        hard_max = 65.0,
+        delta = 5.0,
+        interpolation = :linear,
+    ),
+    (
+        name = "r",
+        unit = "r_g",
+        initial = 5.0,
+        soft_min = 2.0,
+        hard_min = 2.0,
+        soft_max = 50.0,
+        hard_max = 50.0,
+        delta = 1.0,
+        interpolation = :linear,
+    ),
+    (
+        name = "h",
+        unit = "r_g",
+        initial = 5.0,
+        # Floor at 2.5: Gradus RingCorona emissivity can DomainError for some
+        # (spin, r) near h ≈ 2.25 (sub-horizon disc samples in _proper_area).
+        soft_min = 2.5,
+        hard_min = 2.5,
+        soft_max = 20.0,
+        hard_max = 20.0,
+        delta = 0.25,
+        interpolation = :linear,
+    ),
+)
+
 # Temporary diagnostic model: Gaussian blur in g = E_obs/E_em.
 # With Sigma ≪ 1 the kernel is nearly a delta at g=1, so the output is
 # essentially the interpolated xillver table (no relativistic blurring).
@@ -172,6 +223,7 @@ struct XspecModelDefinition
     cc_name::String
     gradus_parameters::Tuple
     reflection_parameters::Tuple
+    corona_variant::Symbol
     disc_variant::Symbol
 end
 
@@ -201,6 +253,7 @@ const LAMP_SS_MODEL = XspecModelDefinition(
     "graduslampsjxspec",
     LAMP_SS_GRADUS_PARAMETERS,
     REFLECTION_PARAMETERS,
+    :lamppost,
     :ss,
 )
 
@@ -210,6 +263,17 @@ const LAMP_THIN_MODEL = XspecModelDefinition(
     "graduslampthinxspec",
     LAMP_THIN_GRADUS_PARAMETERS,
     REFLECTION_PARAMETERS,
+    :lamppost,
+    :thin,
+)
+
+const RING_THIN_MODEL = XspecModelDefinition(
+    "gradus_ring_thin",
+    "c_gradusringthinjulia",
+    "gradusringthinxspec",
+    RING_THIN_GRADUS_PARAMETERS,
+    REFLECTION_PARAMETERS,
+    :ring,
     :thin,
 )
 
@@ -220,9 +284,10 @@ const TEST_GAUSS_MODEL = XspecModelDefinition(
     TEST_GAUSS_PARAMETERS,
     REFLECTION_PARAMETERS,
     :gauss,
+    :gauss,
 )
 
-const ALL_MODELS = (LAMP_SS_MODEL, LAMP_THIN_MODEL, TEST_GAUSS_MODEL)
+const ALL_MODELS = (LAMP_SS_MODEL, LAMP_THIN_MODEL, RING_THIN_MODEL, TEST_GAUSS_MODEL)
 
 # Backwards-compatible aliases for the original lamppost + S&S model.
 const MODEL_NAME = LAMP_SS_MODEL.name

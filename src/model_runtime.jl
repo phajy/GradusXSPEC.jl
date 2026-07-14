@@ -88,7 +88,12 @@ function _get_or_compute_convolution_matrix(
 
     MATRIX_CACHE_MISSES[] += 1
     gradus_params = _gradus_grid_point_params(rt, gradus_idx)
-    _, L = line_profile_kernel(gradus_params, rt.definition.disc_variant; g_grid = g_grid)
+    _, L = line_profile_kernel(
+        gradus_params,
+        rt.definition.corona_variant,
+        rt.definition.disc_variant;
+        g_grid = g_grid,
+    )
     M = build_convolution_matrix(
         table.energy_lo,
         table.energy_hi,
@@ -151,7 +156,7 @@ function evaluate_spectrum_interpolated(
     used_blur = false
     for (gradus_idx, weight) in gradus_corners
         corner_params = _gradus_grid_point_params(rt, gradus_idx)
-        if rt.definition.disc_variant == :gauss &&
+        if rt.definition.corona_variant == :gauss &&
            gaussian_is_identity(corner_params[1]; g_grid = g_grid)
             used_identity = true
             @inbounds for i in eachindex(convolved)
@@ -277,7 +282,12 @@ function _convolved_table_spectrum(
 )
     rt = MODEL_RUNTIMES[LAMP_SS_MODEL.name]
     R = interpolate_table_spectrum(table, refl_params)
-    _, L = line_profile_kernel(gradus_params, rt.definition.disc_variant; kwargs...)
+    _, L = line_profile_kernel(
+        gradus_params,
+        rt.definition.corona_variant,
+        rt.definition.disc_variant;
+        kwargs...,
+    )
     g_grid = get(kwargs, :g_grid, default_g_grid())
     n_sub = get(kwargs, :n_sub, 4)
     return convolve_reflection(
