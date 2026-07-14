@@ -27,6 +27,7 @@ main
 model.dat
 
 # XSPEC initpackage / hmake artifacts
+Makefile
 gradusFunctionMap.*
 gradusxspecFunctionMap.*
 lpack_gradus.*
