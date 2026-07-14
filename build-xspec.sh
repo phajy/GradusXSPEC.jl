@@ -64,4 +64,4 @@ echo "==> Building with hmake"
 hmake
 
 echo "Done. Load in XSPEC with: lmod ${PACKAGE_NAME} ."
-echo "Models: gradus_lamp_ss, gradus_lamp_thin, gradus_ring_thin, test_gauss"
+echo "Models: gradus_lamp_ss, gradus_lamp_thin, gradus_ring_thin, gradus_disc_thin, test_gauss"

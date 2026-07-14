@@ -142,6 +142,10 @@ const RING_THIN_GRADUS_PARAMETERS = (
     ),
 )
 
+# Filled disc corona (Gradus DiscCorona): same Gradus params as ring, but `r` is
+# the outer radius of a uniform-brightness corona at height `h`.
+const DISC_THIN_GRADUS_PARAMETERS = RING_THIN_GRADUS_PARAMETERS
+
 # Temporary diagnostic model: Gaussian blur in g = E_obs/E_em.
 # With Sigma ≪ 1 the kernel is nearly a delta at g=1, so the output is
 # essentially the interpolated xillver table (no relativistic blurring).
@@ -277,6 +281,16 @@ const RING_THIN_MODEL = XspecModelDefinition(
     :thin,
 )
 
+const DISC_THIN_MODEL = XspecModelDefinition(
+    "gradus_disc_thin",
+    "c_gradusdiscthinjulia",
+    "gradusdiscthinxspec",
+    DISC_THIN_GRADUS_PARAMETERS,
+    REFLECTION_PARAMETERS,
+    :disc,
+    :thin,
+)
+
 const TEST_GAUSS_MODEL = XspecModelDefinition(
     "test_gauss",
     "c_testgaussjulia",
@@ -287,7 +301,13 @@ const TEST_GAUSS_MODEL = XspecModelDefinition(
     :gauss,
 )
 
-const ALL_MODELS = (LAMP_SS_MODEL, LAMP_THIN_MODEL, RING_THIN_MODEL, TEST_GAUSS_MODEL)
+const ALL_MODELS = (
+    LAMP_SS_MODEL,
+    LAMP_THIN_MODEL,
+    RING_THIN_MODEL,
+    DISC_THIN_MODEL,
+    TEST_GAUSS_MODEL,
+)
 
 # Backwards-compatible aliases for the original lamppost + S&S model.
 const MODEL_NAME = LAMP_SS_MODEL.name

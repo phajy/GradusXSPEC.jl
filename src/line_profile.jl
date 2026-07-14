@@ -88,6 +88,57 @@ function _corona_n_samples(::Val{:ring})
     return 256
 end
 
+function _corona_n_samples(::Val{:disc})
+    # Each stacked RingCorona needs the same sample count as the ring model.
+    return 256
+end
+
+# Match Gradus DiscCorona defaults: n concentric rings with r·Δr weighting
+# (uniform corona surface brightness). Gradus DiscCorona.emissivity_profile is
+# currently unusable here (DiscCoronaProfile expects RingCoronaProfile, but the
+# optimized RingCorona path returns RingApproximation).
+const DISC_CORONA_N_RINGS = 10
+const DISC_CORONA_R_INNER = 1e-2
+
+"""
+Build a disc-corona emissivity function matching Gradus `DiscCorona`:
+
+    radii = range(r_inner, r_outer, n_rings)
+    ε(ρ) = Σᵢ ε_ringᵢ(ρ) · rᵢ · Δr
+"""
+function _disc_corona_emissivity(
+    m::KerrMetric,
+    d,
+    r_outer::Float64,
+    height::Float64;
+    n_rings::Int = DISC_CORONA_N_RINGS,
+    n_samples::Int = _corona_n_samples(Val(:disc)),
+    r_inner::Float64 = DISC_CORONA_R_INNER,
+)
+    r_outer >= r_inner || throw(ArgumentError(
+        "disc corona outer radius ($r_outer) must be >= inner ($r_inner)",
+    ))
+    radii = collect(range(r_inner, r_outer; length = n_rings))
+    δr = n_rings > 1 ? (radii[2] - radii[1]) : r_outer
+    profiles = map(radii) do r
+        emissivity_profile(
+            m,
+            d,
+            RingCorona(; r = r, h = height);
+            n_samples = n_samples,
+        )
+    end
+    return ρ -> begin
+        total = 0.0
+        @inbounds for i in eachindex(radii)
+            ε = emissivity_at(profiles[i], ρ)
+            ε_s = ε isa Number ? Float64(ε) : Float64(first(ε))
+            total += ε_s * radii[i] * δr
+        end
+        return total
+    end
+end
+
 """
 Scalar emissivity for Gradus `lineprofile`.
 
@@ -157,7 +208,7 @@ function _raw_line_profile(
         return _gaussian_line_profile(params[1], g_bins)
     end
 
-    corona_variant in (:lamppost, :ring) ||
+    corona_variant in (:lamppost, :ring, :disc) ||
         throw(ArgumentError("unsupported corona variant: $corona_variant"))
     disc_variant in (:ss, :thin) ||
         throw(ArgumentError("unsupported disc variant: $disc_variant"))
@@ -171,17 +222,25 @@ function _raw_line_profile(
     m = KerrMetric(M = 1.0, a = spin)
     d = _build_accretion_disc(m, params, Val(disc_variant))
     x = SVector(0.0, 1000.0, deg2rad(inclination), 0.0)
-    corona = _build_corona(params, Val(corona_variant))
-    profile = emissivity_profile(
-        m,
-        d,
-        corona;
-        n_samples = _corona_n_samples(Val(corona_variant)),
-    )
     bins = collect(Float64.(g_bins))
+
+    ε = if corona_variant == :disc
+        _, _, r_outer, height = _ring_geometry(params)
+        _disc_corona_emissivity(m, d, r_outer, height)
+    else
+        corona = _build_corona(params, Val(corona_variant))
+        profile = emissivity_profile(
+            m,
+            d,
+            corona;
+            n_samples = _corona_n_samples(Val(corona_variant)),
+        )
+        _scalar_emissivity(profile)
+    end
+
     _, flux = lineprofile(
         bins,
-        _scalar_emissivity(profile),
+        ε,
         m,
         x,
         d;
@@ -195,8 +254,8 @@ end
     line_profile_kernel(params, corona_variant, disc_variant; g_grid=default_g_grid()) -> (g, L)
 
 Evaluate a unit-area line-profile kernel `L(g)` for the given corona/disc geometry.
-`corona_variant` is `:lamppost`, `:ring`, or `:gauss`; `disc_variant` is `:ss`,
-`:thin`, or `:gauss`.
+`corona_variant` is `:lamppost`, `:ring`, `:disc`, or `:gauss`; `disc_variant`
+is `:ss`, `:thin`, or `:gauss`.
 """
 function line_profile_kernel(
     params::NTuple{N, Float64},

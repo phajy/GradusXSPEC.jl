@@ -10,6 +10,7 @@
 //   gradus_lamp_ss   — lamppost + Shakura-Sunyaev thick disc
 //   gradus_lamp_thin — lamppost + thin disc
 //   gradus_ring_thin — ring corona + thin disc
+//   gradus_disc_thin — filled disc corona + thin disc
 //   test_gauss       — temporary Gaussian blur (narrow ≈ identity)
 //
 // Note: XSPEC model names may contain underscores, but wrapper function names
@@ -25,6 +26,9 @@ extern int graduslampthinxspec(
     const double* energy, int Nflux, const double* parameter, int spectrum,
     double* flux, double* fluxVariance, const char* init);
 extern int gradusringthinxspec(
+    const double* energy, int Nflux, const double* parameter, int spectrum,
+    double* flux, double* fluxVariance, const char* init);
+extern int gradusdiscthinxspec(
     const double* energy, int Nflux, const double* parameter, int spectrum,
     double* flux, double* fluxVariance, const char* init);
 extern int testgaussxspec(
@@ -64,6 +68,14 @@ void gradusringthinjulia(
 {
     ensure_julia_initialized();
     gradusringthinxspec(energy, Nflux, parameter, spectrum, flux, fluxVariance, init);
+}
+
+void gradusdiscthinjulia(
+    const double* energy, int Nflux, const double* parameter, int spectrum,
+    double* flux, double* fluxVariance, const char* init)
+{
+    ensure_julia_initialized();
+    gradusdiscthinxspec(energy, Nflux, parameter, spectrum, flux, fluxVariance, init);
 }
 
 void testgaussjulia(

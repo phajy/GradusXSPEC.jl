@@ -35,6 +35,7 @@ export default_g_grid,
     LAMP_SS_MODEL,
     LAMP_THIN_MODEL,
     RING_THIN_MODEL,
+    DISC_THIN_MODEL,
     TEST_GAUSS_MODEL
 
 const LINE_CACHE_LOCK = ReentrantLock()
@@ -253,6 +254,27 @@ end
 )::Cint
     return _xspec_model_entry_catch(
         MODEL_RUNTIMES[RING_THIN_MODEL.name],
+        energy,
+        Nflux,
+        parameter,
+        spectrum,
+        flux,
+        fluxError,
+        init,
+    )
+end
+
+@ccallable function gradusdiscthinxspec(
+    energy::Ptr{Cdouble},
+    Nflux::Cint,
+    parameter::Ptr{Cdouble},
+    spectrum::Cint,
+    flux::Ptr{Cdouble},
+    fluxError::Ptr{Cdouble},
+    init::Ptr{Cchar},
+)::Cint
+    return _xspec_model_entry_catch(
+        MODEL_RUNTIMES[DISC_THIN_MODEL.name],
         energy,
         Nflux,
         parameter,
