@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "b5109309e99d1d4daa89c5bcf269f80ed76a9c63"
+project_hash = "34bb192c371a08687762014cbc8b68793528a07a"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "d9aaef7c63466eee4de23b4d9dad03629df54bea"
@@ -685,7 +685,7 @@ version = "0.4.32"
 deps = ["FITSIO", "Gradus", "PackageCompiler"]
 path = "."
 uuid = "8153e274-656c-44e5-9129-66f17e150590"
-version = "0.1.0"
+version = "0.2.0"
 
 [[deps.Graphs]]
 deps = ["ArnoldiMethod", "DataStructures", "Inflate", "LinearAlgebra", "Random", "SimpleTraits", "SparseArrays", "Statistics"]
