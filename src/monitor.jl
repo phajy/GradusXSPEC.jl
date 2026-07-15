@@ -1,12 +1,14 @@
 const MONITOR_LOCK = ReentrantLock()
+# Init-string overrides. `nothing` means "not set via the init string"; the
+# getters below then fall back to the environment and finally the defaults.
 const MONITOR_PATH = Ref{Union{String, Nothing}}(nothing)
-const MONITOR_INTERVAL = Ref(10)
+const MONITOR_INTERVAL = Ref{Union{Int, Nothing}}(nothing)
 const MONITOR_EVAL_COUNT = Ref(0)
 const MONITOR_HIST_BINS = 24
 const MONITOR_STATE = Dict{String, Any}()
 
 function _monitor_timestamp()
-    return Libc.strftime("%Y-%m-%d %H:%M:%S", round(Int, time()))
+    return Base.Libc.strftime("%Y-%m-%d %H:%M:%S", round(Int, time()))
 end
 
 function _monitor_pad_name(name::AbstractString, width::Int = 12)
@@ -42,7 +44,7 @@ function _monitor_path()
 end
 
 function _monitor_interval()
-    if MONITOR_INTERVAL[] >= 1
+    if MONITOR_INTERVAL[] !== nothing
         return MONITOR_INTERVAL[]
     end
     env = strip(get(ENV, "GRADUSXSPEC_MONITOR_INTERVAL", ""))
@@ -55,13 +57,13 @@ function _monitor_interval()
     return 10
 end
 
+# Reset the init-string overrides on every evaluation from the parsed init
+# string, mirroring the verbose flag: dropping `monitor` / `monitor_interval`
+# from the init string clears the prior setting (the environment variables can
+# still enable monitoring via the getters above).
 function _apply_monitor_config(cfg::InitConfig)
-    if cfg.monitor_path !== nothing
-        MONITOR_PATH[] = cfg.monitor_path
-    end
-    if cfg.monitor_interval !== nothing
-        MONITOR_INTERVAL[] = cfg.monitor_interval
-    end
+    MONITOR_PATH[] = cfg.monitor_path
+    MONITOR_INTERVAL[] = cfg.monitor_interval
 end
 
 function _should_write_monitor_file()

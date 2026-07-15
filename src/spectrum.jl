@@ -13,23 +13,27 @@ struct InitConfig
     monitor_interval::Union{Int, Nothing}
 end
 
+# Split a token into a lowercased key and the raw value after the first '='.
+# A value may itself contain '=' (e.g. a path), so only the first '=' splits.
+function _split_key_value(token::AbstractString)
+    parts = split(token, "="; limit = 2)
+    key = lowercase(strip(parts[1]))
+    value = length(parts) == 2 ? strip(parts[2]) : ""
+    return key, value
+end
+
 function _parse_monitor_token(token::AbstractString)
-    key, _, value = rpartition(token, "=")
-    if lowercase(key) == "monitor"
-        path = strip(value)
-        return isempty(path) ? DEFAULT_MONITOR_PATH : path
-    end
-    return nothing
+    key, value = _split_key_value(token)
+    key == "monitor" || return nothing
+    return isempty(value) ? DEFAULT_MONITOR_PATH : String(value)
 end
 
 function _parse_monitor_interval_token(token::AbstractString)
-    key, _, value = rpartition(token, "=")
-    if lowercase(key) == "monitor_interval"
-        parsed = tryparse(Int, strip(value))
-        (parsed === nothing || parsed < 1) && return nothing
-        return parsed
-    end
-    return nothing
+    key, value = _split_key_value(token)
+    key == "monitor_interval" || return nothing
+    parsed = tryparse(Int, value)
+    (parsed === nothing || parsed < 1) && return nothing
+    return parsed
 end
 
 function parse_init_string(init::AbstractString)
@@ -40,11 +44,13 @@ function parse_init_string(init::AbstractString)
     monitor_interval = nothing
     for token in tokens
         lowered = lowercase(token)
+        # Match monitor directives exactly (bare key or `key=value`) so an
+        # unrelated table path such as `monitor_table.fits` is not swallowed.
         if lowered == "verbose"
             verbose = true
-        elseif startswith(lowered, "monitor_interval")
+        elseif lowered == "monitor_interval" || startswith(lowered, "monitor_interval=")
             monitor_interval = _parse_monitor_interval_token(token)
-        elseif startswith(lowered, "monitor")
+        elseif lowered == "monitor" || startswith(lowered, "monitor=")
             monitor_path = _parse_monitor_token(token)
         elseif token != "0"
             table_path = token
