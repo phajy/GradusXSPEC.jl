@@ -1,39 +1,87 @@
-// XSPEC will use this to build the gradusxspec model
-// initpackage gradus model.dat .
-// lmod gradus .
+// XSPEC local-model wrappers for GradusXSPEC.
+//
+// Build (from repo root, with HEADAS set):
+//   ./build-xspec.sh
+//
+// Load in XSPEC:
+//   lmod gradusxspec .
+//
+// Models defined in model.dat:
+//   gradus_lamp_ss   — lamppost + Shakura-Sunyaev thick disc
+//   gradus_lamp_thin — lamppost + thin disc
+//   gradus_ring_thin — ring corona + thin disc
+//   gradus_disc_thin — filled disc corona + thin disc
+//   test_gauss       — temporary Gaussian blur (narrow ≈ identity)
+//
+// Note: XSPEC model names may contain underscores, but wrapper function names
+// (below) must not.
 
 #include <stdio.h>
-#include "build/include/julia_init.h" 
-// Function exported from libGradusXSPEC.dylib (built by PackageCompiler)
-extern int gradusxspec(const double* energy, int Nflux, const double* parameter,
-    int spectrum, double* flux, double* fluxVariance, const char* init);
+#include "build/include/julia_init.h"
+
+extern int graduslampsjxspec(
+    const double* energy, int Nflux, const double* parameter, int spectrum,
+    double* flux, double* fluxVariance, const char* init);
+extern int graduslampthinxspec(
+    const double* energy, int Nflux, const double* parameter, int spectrum,
+    double* flux, double* fluxVariance, const char* init);
+extern int gradusringthinxspec(
+    const double* energy, int Nflux, const double* parameter, int spectrum,
+    double* flux, double* fluxVariance, const char* init);
+extern int gradusdiscthinxspec(
+    const double* energy, int Nflux, const double* parameter, int spectrum,
+    double* flux, double* fluxVariance, const char* init);
+extern int testgaussxspec(
+    const double* energy, int Nflux, const double* parameter, int spectrum,
+    double* flux, double* fluxVariance, const char* init);
 
 static int julia_initialized = 0;
 
-void gradusjulia(const double* energy, int Nflux, const double* parameter,
-    int spectrum, double* flux, double* fluxVariance,
-    const char* init)
+static void ensure_julia_initialized(void)
 {
-    // Initialize Julia only on first call
     if (!julia_initialized) {
         printf("Starting Julia\n");
         init_julia(0, NULL);
         julia_initialized = 1;
     }
-
-    // Initially do absolutely nothing to see if we can get this basic function working!
-    printf("Calling Gradus\n");
-    gradusxspec(energy, Nflux, parameter, spectrum, flux, fluxVariance, init);
-
-    // Don't shutdown Julia here; keep it running for subsequent calls
-    // shutdown_julia(0);
 }
 
-// Possble cleanup function to be called at program exit (don't know how to get XSPEC to call this)
-// void gradusjulia_cleanup(void)
-// {
-//     if (julia_initialized) {
-//         shutdown_julia(0);
-//         julia_initialized = 0;
-//     }
-// }
+void graduslampsjulia(
+    const double* energy, int Nflux, const double* parameter, int spectrum,
+    double* flux, double* fluxVariance, const char* init)
+{
+    ensure_julia_initialized();
+    graduslampsjxspec(energy, Nflux, parameter, spectrum, flux, fluxVariance, init);
+}
+
+void graduslampthinjulia(
+    const double* energy, int Nflux, const double* parameter, int spectrum,
+    double* flux, double* fluxVariance, const char* init)
+{
+    ensure_julia_initialized();
+    graduslampthinxspec(energy, Nflux, parameter, spectrum, flux, fluxVariance, init);
+}
+
+void gradusringthinjulia(
+    const double* energy, int Nflux, const double* parameter, int spectrum,
+    double* flux, double* fluxVariance, const char* init)
+{
+    ensure_julia_initialized();
+    gradusringthinxspec(energy, Nflux, parameter, spectrum, flux, fluxVariance, init);
+}
+
+void gradusdiscthinjulia(
+    const double* energy, int Nflux, const double* parameter, int spectrum,
+    double* flux, double* fluxVariance, const char* init)
+{
+    ensure_julia_initialized();
+    gradusdiscthinxspec(energy, Nflux, parameter, spectrum, flux, fluxVariance, init);
+}
+
+void testgaussjulia(
+    const double* energy, int Nflux, const double* parameter, int spectrum,
+    double* flux, double* fluxVariance, const char* init)
+{
+    ensure_julia_initialized();
+    testgaussxspec(energy, Nflux, parameter, spectrum, flux, fluxVariance, init);
+}

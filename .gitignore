@@ -27,9 +27,20 @@ main
 model.dat
 
 # XSPEC initpackage / hmake artifacts
+Makefile
 gradusFunctionMap.*
+gradusxspecFunctionMap.*
 lpack_gradus.*
+lpack_gradusxspec.*
 libgradus.*
+libgradusxspec.*
 pkgIndex.tcl
 *.o
 pgplot.ps
+pgplot.png
+xillverD-5.fits
+gradusxspec_monitor.txt
+docs/figures/
+
+# Local debugging notes (not for the repo)
+gradus_bugs.md

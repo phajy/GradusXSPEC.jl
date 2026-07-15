@@ -9,7 +9,7 @@ MAKEFILE="${1:-Makefile}"
 MARKER="-lGradusXSPEC"
 
 if [[ ! -f "$MAKEFILE" ]]; then
-  echo "error: ${MAKEFILE} not found (run 'initpackage gradus model.dat .' first)" >&2
+  echo "error: ${MAKEFILE} not found (run 'initpackage gradusxspec model.dat .' first)" >&2
   exit 1
 fi
 
