@@ -50,9 +50,10 @@ function _verbose_enabled()
 end
 
 function _apply_init_config(cfg::InitConfig)
-    if cfg.verbose
-        VERBOSE[] = true
-    end
+    # Track the init string on every call so removing "verbose" from the model
+    # init string turns verbose output back off (the environment variable can
+    # still force it on via _verbose_enabled).
+    VERBOSE[] = cfg.verbose
     _apply_monitor_config(cfg)
 end
 
@@ -304,19 +305,6 @@ end
         fluxError,
         init,
     )
-end
-
-# Backwards-compatible entry point for the original single-model build.
-@ccallable function gradusxspec(
-    energy::Ptr{Cdouble},
-    Nflux::Cint,
-    parameter::Ptr{Cdouble},
-    spectrum::Cint,
-    flux::Ptr{Cdouble},
-    fluxError::Ptr{Cdouble},
-    init::Ptr{Cchar},
-)::Cint
-    return graduslampsjxspec(energy, Nflux, parameter, spectrum, flux, fluxError, init)
 end
 
 function line_spectrum_cache_size()

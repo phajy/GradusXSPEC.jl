@@ -85,11 +85,3 @@ void testgaussjulia(
     ensure_julia_initialized();
     testgaussxspec(energy, Nflux, parameter, spectrum, flux, fluxVariance, init);
 }
-
-// Backwards-compatible wrapper for older model.dat entries.
-void gradusjulia(
-    const double* energy, int Nflux, const double* parameter, int spectrum,
-    double* flux, double* fluxVariance, const char* init)
-{
-    graduslampsjulia(energy, Nflux, parameter, spectrum, flux, fluxVariance, init);
-}

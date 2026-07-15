@@ -57,8 +57,14 @@ initpackage "${PACKAGE_NAME}" "${MODEL_DAT}" .
 echo "==> Patching Makefile for GradusXSPEC"
 ./patch-xspec-makefile.sh
 
-echo "==> Refreshing HEASOFT Fortran library paths (gcc@14)"
-./fix-heasoft-f77libs.sh
+# macOS-only workaround: Homebrew gcc@14 upgrades break HEASOFT's recorded
+# Fortran library paths. Linux HEASOFT installs do not need (or have) brew.
+if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
+  echo "==> Refreshing HEASOFT Fortran library paths (gcc@14)"
+  ./fix-heasoft-f77libs.sh
+else
+  echo "==> Skipping HEASOFT gcc@14 path fix (not macOS with Homebrew)"
+fi
 
 echo "==> Building with hmake"
 hmake

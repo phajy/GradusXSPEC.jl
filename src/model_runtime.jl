@@ -148,22 +148,40 @@ function evaluate_spectrum_interpolated(
 
     R_interp = _interpolate_reflection_spectrum(rt, table, refl_corners)
 
-    # Narrow Gaussian corners are a true identity: do not build a discrete δ(g-1)
-    # kernel matrix (that path does not preserve counts and introduces an
-    # ~E-dependent scale error versus atable{xillver}).
-    convolved = zeros(Float64, length(R_interp))
     used_identity = false
-    used_blur = false
-    for (gradus_idx, weight) in gradus_corners
-        corner_params = _gradus_grid_point_params(rt, gradus_idx)
-        if rt.definition.corona_variant == :gauss &&
-           gaussian_is_identity(corner_params[1]; g_grid = g_grid)
+    if rt.definition.corona_variant == :gauss
+        # The Gaussian diagnostic kernel is analytic and cheap, so evaluate it
+        # at the exact requested Sigma instead of interpolating between grid
+        # corners. Mixing an identity (narrow-σ) corner with a blurred corner
+        # is not equivalent to blurring at the requested σ.
+        #
+        # Narrow Gaussians are a true identity: do not build a discrete δ(g-1)
+        # kernel matrix (that path does not preserve counts and introduces an
+        # ~E-dependent scale error versus atable{xillver}).
+        if gaussian_is_identity(gradus_params[1]; g_grid = g_grid)
             used_identity = true
-            @inbounds for i in eachindex(convolved)
-                convolved[i] += weight * R_interp[i]
-            end
+            convolved = copy(R_interp)
         else
-            used_blur = true
+            _, L = line_profile_kernel(
+                gradus_params,
+                rt.definition.corona_variant,
+                rt.definition.disc_variant;
+                g_grid = g_grid,
+            )
+            M = build_convolution_matrix(
+                table.energy_lo,
+                table.energy_hi,
+                table.energy_lo,
+                table.energy_hi,
+                g_grid,
+                L;
+                n_sub = n_sub,
+            )
+            convolved = M * R_interp
+        end
+    else
+        convolved = zeros(Float64, length(R_interp))
+        for (gradus_idx, weight) in gradus_corners
             M = _get_or_compute_convolution_matrix(
                 rt,
                 table,
@@ -182,13 +200,7 @@ function evaluate_spectrum_interpolated(
     output = _rebin_to_energy_edges(convolved, table.energy_lo, table.energy_hi, energy_edges)
 
     if verbose
-        mode = if used_identity && !used_blur
-            "identity (no blur)"
-        elseif used_identity && used_blur
-            "mixed identity/blur"
-        else
-            "blur"
-        end
+        mode = used_identity ? "identity (no blur)" : "blur"
         println(
             "GradusXSPEC: $(rt.definition.name) $mode at ($(_format_gradus_grid_point(rt, gradus_params)); ",
             "$(_format_reflection_grid_point(rt, refl_params))) from ",
@@ -202,13 +214,52 @@ function evaluate_spectrum_interpolated(
     return output
 end
 
+# Direct (non-interpolated) evaluation at the exact requested parameters.
+# Used for validation against the grid-interpolated path; bypasses the
+# parameter grids and convolution-matrix cache entirely.
 function evaluate_spectrum(
     rt::ModelRuntime,
     energy_edges::AbstractVector{<:Real},
     params::Tuple{Vararg{Float64, N}};
-    kwargs...,
+    table_path::AbstractString = DEFAULT_TABLE_PATH,
+    g_grid::AbstractVector{<:Real} = default_g_grid(),
+    n_sub::Int = 4,
+    verbose::Bool = false,
 ) where {N}
-    return evaluate_spectrum_interpolated(rt, energy_edges, params; kwargs...)
+    table = get_table(table_path)
+    gradus_params, refl_params = _split_physics_params(rt, params)
+
+    R = interpolate_table_spectrum(table, refl_params)
+
+    if rt.definition.corona_variant == :gauss &&
+       gaussian_is_identity(gradus_params[1]; g_grid = g_grid)
+        convolved = copy(R)
+    else
+        _, L = line_profile_kernel(
+            gradus_params,
+            rt.definition.corona_variant,
+            rt.definition.disc_variant;
+            g_grid = g_grid,
+        )
+        convolved = convolve_reflection(
+            R,
+            table.energy_lo,
+            table.energy_hi,
+            g_grid,
+            L;
+            n_sub = n_sub,
+        )
+    end
+
+    if verbose
+        println(
+            "GradusXSPEC: $(rt.definition.name) direct evaluation at ",
+            "($(_format_gradus_grid_point(rt, gradus_params)); ",
+            "$(_format_reflection_grid_point(rt, refl_params)))",
+        )
+    end
+
+    return _rebin_to_energy_edges(convolved, table.energy_lo, table.energy_hi, energy_edges)
 end
 
 function build_model_runtimes(models = ALL_MODELS)
@@ -272,32 +323,6 @@ function evaluate_spectrum(
 )
     params = (gradus_params..., refl_params...)
     return evaluate_spectrum(MODEL_RUNTIMES[LAMP_SS_MODEL.name], energy_edges, params; kwargs...)
-end
-
-function _convolved_table_spectrum(
-    table::XspecTableModel,
-    gradus_params::NTuple{4, Float64},
-    refl_params::NTuple{5, Float64};
-    kwargs...,
-)
-    rt = MODEL_RUNTIMES[LAMP_SS_MODEL.name]
-    R = interpolate_table_spectrum(table, refl_params)
-    _, L = line_profile_kernel(
-        gradus_params,
-        rt.definition.corona_variant,
-        rt.definition.disc_variant;
-        kwargs...,
-    )
-    g_grid = get(kwargs, :g_grid, default_g_grid())
-    n_sub = get(kwargs, :n_sub, 4)
-    return convolve_reflection(
-        R,
-        table.energy_lo,
-        table.energy_hi,
-        g_grid,
-        L;
-        n_sub = n_sub,
-    )
 end
 
 function convolution_matrix_cache_size()

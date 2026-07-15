@@ -18,19 +18,24 @@ function _monitor_fmt_num(x::Real)
     return string(x)
 end
 
+# GRADUSXSPEC_MONITOR accepts "1"/"true"/"yes" (default path), "0"/"false"/"no"
+# (disabled, like verbose parsing), or a custom file path.
+function _monitor_env_value()
+    env = strip(get(ENV, "GRADUSXSPEC_MONITOR", ""))
+    (isempty(env) || lowercase(env) in ("0", "false", "no")) && return nothing
+    return env
+end
+
 function _monitor_enabled()
-    MONITOR_PATH[] !== nothing ||
-        haskey(ENV, "GRADUSXSPEC_MONITOR") && !isempty(strip(ENV["GRADUSXSPEC_MONITOR"]))
+    MONITOR_PATH[] !== nothing || _monitor_env_value() !== nothing
 end
 
 function _monitor_path()
     if MONITOR_PATH[] !== nothing
         return MONITOR_PATH[]
     end
-    env = strip(get(ENV, "GRADUSXSPEC_MONITOR", ""))
-    if isempty(env)
-        return DEFAULT_MONITOR_PATH
-    elseif lowercase(env) in ("1", "true", "yes")
+    env = _monitor_env_value()
+    if env === nothing || lowercase(env) in ("1", "true", "yes")
         return DEFAULT_MONITOR_PATH
     end
     return env

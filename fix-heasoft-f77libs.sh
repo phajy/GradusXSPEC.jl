@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Refresh HEASOFT hmakerc F77LIBS4C paths for the installed Homebrew gcc@14.
 #
-# HEASOFT records absolute Fortran library paths at configure time. After
-# `brew upgrade gcc@14`, local model links can fail with "library emutls_w not
-# found". This script rewrites F77LIBS4C in every hmakerc under the HEASOFT
-# tree using paths reported by gfortran-14.
+# macOS-only workaround. HEASOFT records absolute Fortran library paths at
+# configure time. After `brew upgrade gcc@14`, local model links can fail with
+# "library emutls_w not found". This script rewrites F77LIBS4C in every hmakerc
+# under the HEASOFT tree using paths reported by gfortran-14.
+#
+# On other platforms (or without Homebrew) this is a no-op.
 #
 # Usage (HEADAS must be set):
 #   ./fix-heasoft-f77libs.sh
@@ -16,14 +18,19 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "fix-heasoft-f77libs: not macOS; nothing to do"
+  exit 0
+fi
+
 if [[ -z "${HEADAS:-}" ]]; then
   echo "error: HEADAS is not set (source \$HEADAS/headas-init.sh)" >&2
   exit 1
 fi
 
 if ! command -v brew >/dev/null 2>&1; then
-  echo "error: brew not found on PATH" >&2
-  exit 1
+  echo "fix-heasoft-f77libs: Homebrew not found; nothing to do"
+  exit 0
 fi
 
 GCC14_PREFIX="$(brew --prefix gcc@14 2>/dev/null || true)"
