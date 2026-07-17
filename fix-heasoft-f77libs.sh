@@ -1,14 +1,23 @@
 #!/usr/bin/env bash
-# Refresh HEASOFT hmakerc F77LIBS4C paths for the installed Homebrew gcc@14.
+# Compute (and optionally apply) the HEASOFT F77LIBS4C paths for Homebrew gcc@14.
 #
 # macOS-only workaround. HEASOFT records absolute Fortran library paths at
 # configure time. After `brew upgrade gcc@14`, local model links can fail with
-# "library emutls_w not found". This script rewrites F77LIBS4C in every hmakerc
-# under the HEASOFT tree using paths reported by gfortran-14.
+# "library emutls_w not found" because those paths have moved.
 #
-# On other platforms (or without Homebrew) this is a no-op.
+# Two modes:
+#   --print   Print the correct F77LIBS4C value to stdout and exit. This is the
+#             preferred, non-invasive path: build-xspec.sh captures it and
+#             passes `hmake F77LIBS4C=...`, scoping the fix to this one build.
+#   (default) Rewrite F77LIBS4C in every hmakerc under the HEASOFT tree. This
+#             mutates the shared HEASOFT install and is only a last resort, kept
+#             for cases where the hmake override is not viable.
 #
-# Usage (HEADAS must be set):
+# On other platforms (or without Homebrew) this is a no-op: `--print` emits
+# nothing, the default mode exits successfully without changes.
+#
+# Usage (HEADAS must be set for the default mode):
+#   ./fix-heasoft-f77libs.sh --print
 #   ./fix-heasoft-f77libs.sh
 #
 # Optional:
@@ -18,18 +27,33 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "fix-heasoft-f77libs: not macOS; nothing to do"
-  exit 0
-fi
-
-if [[ -z "${HEADAS:-}" ]]; then
-  echo "error: HEADAS is not set (source \$HEADAS/headas-init.sh)" >&2
+PRINT_ONLY=false
+if [[ "${1:-}" == "--print" ]]; then
+  PRINT_ONLY=true
+elif [[ -n "${1:-}" ]]; then
+  echo "usage: $0 [--print]" >&2
   exit 1
 fi
 
+# In --print mode, stdout must contain only the flags, so send status and
+# "nothing to do" messages to stderr.
+log() {
+  if [[ "$PRINT_ONLY" == true ]]; then
+    echo "$@" >&2
+  else
+    echo "$@"
+  fi
+}
+
+# Gracefully do nothing off macOS or without Homebrew. --print stays silent on
+# stdout so the caller simply gets an empty override.
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  log "fix-heasoft-f77libs: not macOS; nothing to do"
+  exit 0
+fi
+
 if ! command -v brew >/dev/null 2>&1; then
-  echo "fix-heasoft-f77libs: Homebrew not found; nothing to do"
+  log "fix-heasoft-f77libs: Homebrew not found; nothing to do"
   exit 0
 fi
 
@@ -64,6 +88,16 @@ GCC_LIB_DIR="$(cd "$(dirname "$EMUTLS_DIR")" && pwd)"
 GFORTRAN_DIR="$(cd "$(dirname "$GFORTRAN_LIB")" && pwd)"
 
 F77LIBS4C="-L/usr/lib -L${EMUTLS_DIR} -L${GCC_LIB_DIR} -L${GFORTRAN_DIR} -lemutls_w -lheapt_w -lgfortran -lquadmath "
+
+if [[ "$PRINT_ONLY" == true ]]; then
+  printf '%s' "$F77LIBS4C"
+  exit 0
+fi
+
+if [[ -z "${HEADAS:-}" ]]; then
+  echo "error: HEADAS is not set (source \$HEADAS/headas-init.sh)" >&2
+  exit 1
+fi
 
 HEASOFT_ROOT="${HEASOFT_ROOT:-$(dirname "$HEADAS")}"
 if [[ ! -d "$HEASOFT_ROOT" ]]; then

@@ -1,0 +1,30 @@
+# Headless smoke test for the GradusXSPEC local model package.
+#
+# Run via:  xspec - docker/smoke-test.xcm
+#
+# Loads the package, then evaluates the fast diagnostic model over a dummy
+# response. This exercises the full XSPEC <-> Julia bridge (dlopen, model.dat
+# registration, embedded Julia runtime, flux evaluation) without the minutes of
+# ray tracing the physical models require.
+
+query yes
+set pldevice /null
+
+lmod gradusxspec .
+dummyrsp 0.3 10.0 200 lin
+
+model test_gauss
+/*
+flux 0.5 9.0
+tclout flux
+puts "GradusXSPEC smoke-test flux (0.5-9 keV): $xspec_tclout"
+
+# The physical models use the same interface but each ray-traced evaluation is
+# slow (expect a couple of minutes). Uncomment to exercise one end-to-end:
+#   model gradus_lamp_thin
+#   /*
+#   flux 0.5 9.0
+#   tclout flux
+#   puts "gradus_lamp_thin flux (0.5-9 keV): $xspec_tclout"
+
+exit

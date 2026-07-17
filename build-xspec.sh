@@ -58,16 +58,25 @@ echo "==> Patching Makefile for GradusXSPEC"
 ./patch-xspec-makefile.sh
 
 # macOS-only workaround: Homebrew gcc@14 upgrades break HEASOFT's recorded
-# Fortran library paths. Linux HEASOFT installs do not need (or have) brew.
+# Fortran library paths. Rather than mutating the shared HEASOFT install, we
+# compute the correct paths and pass them to hmake on the command line, which
+# takes precedence over the value baked into hmakerc and scopes the fix to this
+# build. Linux HEASOFT installs do not need (or have) brew, so this is skipped.
+HMAKE_ARGS=()
 if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
-  echo "==> Refreshing HEASOFT Fortran library paths (gcc@14)"
-  ./fix-heasoft-f77libs.sh
+  echo "==> Computing HEASOFT Fortran library paths (gcc@14)"
+  F77LIBS4C_OVERRIDE="$(./fix-heasoft-f77libs.sh --print)"
+  if [[ -n "$F77LIBS4C_OVERRIDE" ]]; then
+    HMAKE_ARGS+=("F77LIBS4C=${F77LIBS4C_OVERRIDE}")
+    echo "    F77LIBS4C=${F77LIBS4C_OVERRIDE}"
+  fi
 else
   echo "==> Skipping HEASOFT gcc@14 path fix (not macOS with Homebrew)"
 fi
 
 echo "==> Building with hmake"
-hmake
+# Guard the array expansion for bash 3.2 (stock macOS) under `set -u`.
+hmake ${HMAKE_ARGS[@]+"${HMAKE_ARGS[@]}"}
 
 echo "Done. Load in XSPEC with: lmod ${PACKAGE_NAME} ."
 echo "Models: gradus_lamp_ss, gradus_lamp_thin, gradus_ring_thin, gradus_disc_thin, test_gauss"

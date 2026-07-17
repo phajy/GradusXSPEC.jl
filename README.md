@@ -45,7 +45,7 @@ julia --project=. src/build_lib.jl
 ./build-xspec.sh
 ```
 
-This runs `clean-xspec-package.sh`, `initpackage`, `patch-xspec-makefile.sh`, `fix-heasoft-f77libs.sh`, and `hmake`. Use `./build-xspec.sh --full` for a full clean rebuild (removes the existing `Makefile` and library first). Requires `HEADAS` to be set.
+This runs `clean-xspec-package.sh`, `initpackage`, `patch-xspec-makefile.sh`, and `hmake`. On macOS it also computes the gcc@14 Fortran library paths and passes them to `hmake` (see below). Use `./build-xspec.sh --full` for a full clean rebuild (removes the existing `Makefile` and library first). Requires `HEADAS` to be set.
 
 Manual steps, if preferred:
 
@@ -53,13 +53,52 @@ Manual steps, if preferred:
 ./clean-xspec-package.sh
 initpackage gradusxspec model.dat .
 ./patch-xspec-makefile.sh
-./fix-heasoft-f77libs.sh
-hmake
+# macOS only: override the stale Fortran paths on the hmake command line
+hmake F77LIBS4C="$(./fix-heasoft-f77libs.sh --print)"
+# Linux: just run hmake
 ```
 
 `initpackage` generates a fresh `Makefile` for the local model package. If you re-run it after changing `model.dat`, remove stale `lpack_<package>.*` files first with `./clean-xspec-package.sh`. That Makefile does not know about the GradusXSPEC shared library, so `patch-xspec-makefile.sh` inserts the required rpath and link flags into `HD_SHLIB_LIBS`. The script is idempotent (safe to run twice) and anchors on the `-lXS` line rather than fixed line numbers, so it should survive minor HEASOFT/Makefile changes better than a static patch file.
 
-After upgrading Homebrew `gcc@14`, `./build-xspec.sh` also refreshes HEASOFT's Fortran library paths automatically via `fix-heasoft-f77libs.sh`.
+#### macOS Fortran linking (gcc@14)
+
+HEASOFT records absolute Fortran library paths at configure time. After a `brew upgrade gcc@14`, those paths move and local-model links fail with `library emutls_w not found`. `fix-heasoft-f77libs.sh --print` recomputes the correct `F77LIBS4C` value from `gfortran-14`, and `build-xspec.sh` passes it to `hmake` on the command line (which takes precedence over the value baked into `hmakerc`). This scopes the fix to the current build and leaves the shared HEASOFT install untouched. As a last resort, running `./fix-heasoft-f77libs.sh` with no arguments rewrites `F77LIBS4C` across the HEASOFT tree in place. On Linux (or without Homebrew) this step is skipped entirely.
+
+### Checking the environment
+
+Before building, you can diagnose prerequisites without changing anything:
+
+```sh
+./check-env.sh
+```
+
+It reports PASS / WARN / FAIL for Julia, `HEADAS`, the HEASOFT tools, build inputs, and (on macOS) the gcc@14 Fortran libraries, and exits non-zero only on hard failures.
+
+### Building and testing on Linux
+
+The build pipeline is the same on Linux (the macOS-only gcc@14 step is skipped).
+If you already have HEASOFT installed, use the native path:
+
+```sh
+source $HEADAS/headas-init.sh
+./check-env.sh
+./build-julia.sh
+./build-xspec.sh
+```
+
+An optional Docker-based reproducibility check is documented in
+[`docker/README.md`](docker/README.md). See also the
+[Building](docs/src/build.md) page in the Documenter manual (`./build-docs.sh`).
+
+### Building the manual
+
+User-facing documentation is built with [Documenter.jl](https://github.com/JuliaDocs/Documenter.jl):
+
+```sh
+./build-docs.sh
+```
+
+Open `docs/build/index.html` in a browser.
 
 ### 3. Test the models
 
