@@ -100,6 +100,27 @@ end
 const DISC_CORONA_N_RINGS = 10
 const DISC_CORONA_R_INNER = 1e-2
 
+
+"""
+Clamp non-positive branch emissivities in a Gradus `RingApproximation`.
+
+Gradus `emissivity_at` does `log2.(br.ε)` and DomainErrors on slightly negative
+numerical ε (see `gradus_bugs.md` / `reproduce_disc_log2.jl`).
+"""
+function _clamp_ring_approximation_emissivity!(profile)
+    profile isa Gradus.RingApproximation || return profile
+    for branch_group in profile.branches
+        for br in branch_group
+            @inbounds for i in eachindex(br.ε)
+                if !(br.ε[i] > 0)
+                    br.ε[i] = eps(typeof(br.ε[i]))
+                end
+            end
+        end
+    end
+    return profile
+end
+
 """
 Build a disc-corona emissivity function matching Gradus `DiscCorona`:
 
@@ -121,12 +142,13 @@ function _disc_corona_emissivity(
     radii = collect(range(r_inner, r_outer; length = n_rings))
     δr = n_rings > 1 ? (radii[2] - radii[1]) : r_outer
     profiles = map(radii) do r
-        emissivity_profile(
+        profile = emissivity_profile(
             m,
             d,
             RingCorona(; r = r, h = height);
             n_samples = n_samples,
         )
+        _clamp_ring_approximation_emissivity!(profile)
     end
     return ρ -> begin
         total = 0.0
@@ -235,6 +257,7 @@ function _raw_line_profile(
             corona;
             n_samples = _corona_n_samples(Val(corona_variant)),
         )
+        _clamp_ring_approximation_emissivity!(profile)
         _scalar_emissivity(profile)
     end
 
