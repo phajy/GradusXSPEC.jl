@@ -244,17 +244,43 @@ function _write_monitor_file(
         push!(lines, "")
 
         push!(lines, "Cache statistics (cumulative)")
+        lim_gib = cache_memory_limit_gib()
+        used_gib = cache_memory_used_gib()
+        lim_text = isinf(lim_gib) ? "unlimited" : "$(round(lim_gib; digits = 2)) GiB"
+        push!(
+            lines,
+            "  Memory budget:      used=$(round(used_gib; digits = 3)) GiB  limit=$(lim_text)  (matrices, line spectra, ring emissivity)",
+        )
         matrix_total = matrix_hits + matrix_misses
         matrix_rate = matrix_total > 0 ? round(100 * matrix_hits / matrix_total; digits = 1) : 0.0
         push!(
             lines,
-            "  Matrix (Gradus blur): hits=$(matrix_hits)  misses=$(matrix_misses)  hit rate=$(matrix_rate)%  cached=$(convolution_matrix_cache_size())",
+            "  Matrix Float32 LRU: hits=$(matrix_hits)  misses=$(matrix_misses)  hit rate=$(matrix_rate)%  cached=$(convolution_matrix_cache_size())",
+        )
+        kernel_hits, kernel_misses = line_kernel_cache_stats()
+        kernel_total = kernel_hits + kernel_misses
+        kernel_rate = kernel_total > 0 ? round(100 * kernel_hits / kernel_total; digits = 1) : 0.0
+        disk_loads, disk_saves = line_kernel_disk_stats()
+        push!(
+            lines,
+            "  Line kernel L(g):   hits=$(kernel_hits)  misses=$(kernel_misses)  hit rate=$(kernel_rate)%  cached=$(line_kernel_cache_size())  (unlimited RAM)",
+        )
+        push!(
+            lines,
+            "  Kernel disk I/O:    loads=$(disk_loads)  saves=$(disk_saves)  dir=$(_kernel_cache_dir())",
         )
         line_total = line_hits + line_misses
         line_rate = line_total > 0 ? round(100 * line_hits / line_total; digits = 1) : 0.0
         push!(
             lines,
             "  Line spectrum:      hits=$(line_hits)  misses=$(line_misses)  hit rate=$(line_rate)%  cached=$(line_spectrum_cache_size())",
+        )
+        ring_hits, ring_misses = ring_emissivity_cache_stats()
+        ring_total = ring_hits + ring_misses
+        ring_rate = ring_total > 0 ? round(100 * ring_hits / ring_total; digits = 1) : 0.0
+        push!(
+            lines,
+            "  Ring emissivity:    hits=$(ring_hits)  misses=$(ring_misses)  hit rate=$(ring_rate)%  cached=$(ring_emissivity_cache_size())",
         )
 
         open(path, "w") do io

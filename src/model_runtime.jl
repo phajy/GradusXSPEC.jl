@@ -63,9 +63,25 @@ end
 
 const MATRIX_CACHE_LOCK = ReentrantLock()
 const CONVOLUTION_MATRIX_CACHE =
-    Dict{Tuple{String, UInt64, Int, String, Tuple{Vararg{Int}}}, Matrix{Float64}}()
+    Dict{Tuple{String, UInt64, Int, String, Tuple{Vararg{Int}}}, Matrix{Float32}}()
+const MATRIX_CACHE_ORDER = Any[]
+const MATRIX_CACHE_SIZES = Dict{Any, UInt64}()
 const MATRIX_CACHE_HITS = Ref(0)
 const MATRIX_CACHE_MISSES = Ref(0)
+
+function _evict_one_matrix!()
+    return _evict_one_from!(
+        MATRIX_CACHE_LOCK,
+        CONVOLUTION_MATRIX_CACHE,
+        MATRIX_CACHE_ORDER,
+        MATRIX_CACHE_SIZES,
+    )
+end
+
+"""Apply a cached Float32 blur matrix to a Float64 reflection spectrum."""
+function _apply_blur_matrix(M::Matrix{Float32}, R::AbstractVector{<:Real})
+    return Float64.(M * Float32.(R))
+end
 
 function _get_or_compute_convolution_matrix(
     rt::ModelRuntime,
@@ -78,23 +94,20 @@ function _get_or_compute_convolution_matrix(
     sig = _convolution_cache_signature(g_grid, n_sub)
     key = (rt.definition.name, sig, n_sub, table_path, gradus_idx)
 
-    cached = lock(MATRIX_CACHE_LOCK) do
-        get(CONVOLUTION_MATRIX_CACHE, key, nothing)
-    end
+    cached = _bounded_cache_lookup!(
+        MATRIX_CACHE_LOCK,
+        CONVOLUTION_MATRIX_CACHE,
+        MATRIX_CACHE_ORDER,
+        key,
+    )
     if cached !== nothing
         MATRIX_CACHE_HITS[] += 1
         return cached
     end
 
     MATRIX_CACHE_MISSES[] += 1
-    gradus_params = _gradus_grid_point_params(rt, gradus_idx)
-    _, L = line_profile_kernel(
-        gradus_params,
-        rt.definition.corona_variant,
-        rt.definition.disc_variant;
-        g_grid = g_grid,
-    )
-    M = build_convolution_matrix(
+    L = _get_or_compute_line_kernel(rt, gradus_idx; g_grid = g_grid)
+    M64 = build_convolution_matrix(
         table.energy_lo,
         table.energy_hi,
         table.energy_lo,
@@ -103,9 +116,16 @@ function _get_or_compute_convolution_matrix(
         L;
         n_sub = n_sub,
     )
-    lock(MATRIX_CACHE_LOCK) do
-        return get!(CONVOLUTION_MATRIX_CACHE, key, M)
-    end
+    M = Float32.(M64)
+    return _bounded_cache_put!(
+        MATRIX_CACHE_LOCK,
+        CONVOLUTION_MATRIX_CACHE,
+        MATRIX_CACHE_ORDER,
+        MATRIX_CACHE_SIZES,
+        key,
+        M,
+        _array_nbytes(M),
+    )
 end
 
 function _interpolate_reflection_spectrum(
@@ -190,7 +210,7 @@ function evaluate_spectrum_interpolated(
                 g_grid = g_grid,
                 n_sub = n_sub,
             )
-            blurred = M * R_interp
+            blurred = _apply_blur_matrix(M, R_interp)
             @inbounds for i in eachindex(convolved)
                 convolved[i] += weight * blurred[i]
             end
