@@ -48,13 +48,19 @@ library into the generated Makefile (idempotent, anchored on the `-lXS` line).
 
 ### 3. Load in XSPEC
 
+```sh
+./run-xspec.sh   # preferred on older Linux; plain `xspec` is fine elsewhere
 ```
-xspec
+
+Then in the XSPEC prompt:
+
+```
 lmod gradusxspec .
 model gradus_lamp_ss
 ```
 
-Evaluate over a dummy response and inspect with `iplot`.
+Evaluate over a dummy response and inspect with `iplot`. On Rocky/RHEL 8, use
+`./run-xspec.sh` if `lmod` fails with a `GLIBCXX` error (see below).
 
 ## Platform notes
 
@@ -71,6 +77,31 @@ source $HEADAS/headas-init.sh
 ```
 
 This is the recommended path if you already have HEASOFT installed.
+
+#### Julia `libstdc++` on older Linux (Rocky / RHEL 8)
+
+Julia 1.12 needs a newer `libstdc++` than the system library on Rocky/RHEL 8
+(`/lib64/libstdc++.so.6` typically tops out at `GLIBCXX_3.4.25`). Loading
+`libgradusxspec.so` can then fail with:
+
+```text
+/lib64/libstdc++.so.6: version `GLIBCXX_...' not found
+(required by .../build/lib/julia/libjulia-internal.so...)
+```
+
+juliaup’s Julia install ships a suitable `libstdc++` under its `lib/` directory,
+but XSPEC does not inherit that path: HEASoft’s `lib/` and `/lib64` are searched
+first. Use the wrapper so Julia’s libraries are prepended to `LD_LIBRARY_PATH`
+before starting XSPEC:
+
+```sh
+./run-xspec.sh
+# or a smoke script:
+./run-xspec.sh - docker/smoke-test.xcm
+```
+
+Then `lmod gradusxspec .` as usual. On newer distributions whose system
+`libstdc++` already provides the needed GLIBCXX versions, plain `xspec` is fine.
 
 ### macOS (gcc@14 Fortran linking)
 

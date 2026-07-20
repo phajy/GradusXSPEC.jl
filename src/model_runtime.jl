@@ -57,8 +57,12 @@ function _format_reflection_grid_point(rt::ModelRuntime, params::Tuple{Vararg{Fl
     return join(parts, ", ")
 end
 
-function _convolution_cache_signature(g_grid::AbstractVector{<:Real}, n_sub::Int)
-    return UInt64(hash(g_grid, hash(n_sub)))
+function _convolution_cache_signature(
+    g_grid::AbstractVector{<:Real},
+    n_sub::Int,
+    blur_sig::UInt64,
+)
+    return UInt64(hash(blur_sig, hash(g_grid, hash(n_sub))))
 end
 
 const MATRIX_CACHE_LOCK = ReentrantLock()
@@ -87,11 +91,14 @@ function _get_or_compute_convolution_matrix(
     rt::ModelRuntime,
     table::XspecTableModel,
     table_path::AbstractString,
-    gradus_idx::Tuple{Vararg{Int, N}};
+    gradus_idx::Tuple{Vararg{Int, N}},
+    blur_lo::AbstractVector{<:Real},
+    blur_hi::AbstractVector{<:Real};
     g_grid::AbstractVector{<:Real} = default_g_grid(),
     n_sub::Int = 4,
 ) where {N}
-    sig = _convolution_cache_signature(g_grid, n_sub)
+    blur_sig = blur_grid_signature(blur_lo, blur_hi)
+    sig = _convolution_cache_signature(g_grid, n_sub, blur_sig)
     key = (rt.definition.name, sig, n_sub, table_path, gradus_idx)
 
     cached = _bounded_cache_lookup!(
@@ -108,10 +115,10 @@ function _get_or_compute_convolution_matrix(
     MATRIX_CACHE_MISSES[] += 1
     L = _get_or_compute_line_kernel(rt, gradus_idx; g_grid = g_grid)
     M64 = build_convolution_matrix(
-        table.energy_lo,
-        table.energy_hi,
-        table.energy_lo,
-        table.energy_hi,
+        blur_lo,
+        blur_hi,
+        blur_lo,
+        blur_hi,
         g_grid,
         L;
         n_sub = n_sub,
@@ -167,6 +174,11 @@ function evaluate_spectrum_interpolated(
     )
 
     R_interp = _interpolate_reflection_spectrum(rt, table, refl_corners)
+    blur_lo, blur_hi = blur_energy_bin_edges(
+        table.energy_lo,
+        table.energy_hi;
+        g_grid = g_grid,
+    )
 
     used_identity = false
     if rt.definition.corona_variant == :gauss
@@ -180,8 +192,16 @@ function evaluate_spectrum_interpolated(
         # ~E-dependent scale error versus atable{xillver}).
         if gaussian_is_identity(gradus_params[1]; g_grid = g_grid)
             used_identity = true
-            convolved = copy(R_interp)
+            convolved_blur = nothing
+            convolved_table = copy(R_interp)
         else
+            R_blur = rebin_flux(
+                R_interp,
+                table.energy_lo,
+                table.energy_hi,
+                blur_lo,
+                blur_hi,
+            )
             _, L = line_profile_kernel(
                 gradus_params,
                 rt.definition.corona_variant,
@@ -189,35 +209,55 @@ function evaluate_spectrum_interpolated(
                 g_grid = g_grid,
             )
             M = build_convolution_matrix(
-                table.energy_lo,
-                table.energy_hi,
-                table.energy_lo,
-                table.energy_hi,
+                blur_lo,
+                blur_hi,
+                blur_lo,
+                blur_hi,
                 g_grid,
                 L;
                 n_sub = n_sub,
             )
-            convolved = M * R_interp
+            convolved_blur = M * R_blur
+            convolved_table = nothing
         end
     else
-        convolved = zeros(Float64, length(R_interp))
+        R_blur = rebin_flux(
+            R_interp,
+            table.energy_lo,
+            table.energy_hi,
+            blur_lo,
+            blur_hi,
+        )
+        convolved_blur = zeros(Float64, length(R_blur))
         for (gradus_idx, weight) in gradus_corners
             M = _get_or_compute_convolution_matrix(
                 rt,
                 table,
                 resolved_path,
-                gradus_idx;
+                gradus_idx,
+                blur_lo,
+                blur_hi;
                 g_grid = g_grid,
                 n_sub = n_sub,
             )
-            blurred = _apply_blur_matrix(M, R_interp)
-            @inbounds for i in eachindex(convolved)
-                convolved[i] += weight * blurred[i]
+            blurred = _apply_blur_matrix(M, R_blur)
+            @inbounds for i in eachindex(convolved_blur)
+                convolved_blur[i] += weight * blurred[i]
             end
         end
+        convolved_table = nothing
     end
 
-    output = _rebin_to_energy_edges(convolved, table.energy_lo, table.energy_hi, energy_edges)
+    output = if used_identity
+        _rebin_to_energy_edges(
+            convolved_table,
+            table.energy_lo,
+            table.energy_hi,
+            energy_edges,
+        )
+    else
+        _rebin_to_energy_edges(convolved_blur, blur_lo, blur_hi, energy_edges)
+    end
 
     if verbose
         mode = used_identity ? "identity (no blur)" : "blur"
@@ -225,6 +265,7 @@ function evaluate_spectrum_interpolated(
             "GradusXSPEC: $(rt.definition.name) $mode at ($(_format_gradus_grid_point(rt, gradus_params)); ",
             "$(_format_reflection_grid_point(rt, refl_params))) from ",
             "$(length(gradus_corners)) Gradus and $(length(refl_corners)) reflection corner(s); ",
+            "blur bins=$(length(blur_lo)); ",
             "matrix cache hits=$(MATRIX_CACHE_HITS[]), misses=$(MATRIX_CACHE_MISSES[])",
         )
     end
@@ -250,11 +291,18 @@ function evaluate_spectrum(
     gradus_params, refl_params = _split_physics_params(rt, params)
 
     R = interpolate_table_spectrum(table, refl_params)
+    blur_lo, blur_hi = blur_energy_bin_edges(
+        table.energy_lo,
+        table.energy_hi;
+        g_grid = g_grid,
+    )
 
     if rt.definition.corona_variant == :gauss &&
        gaussian_is_identity(gradus_params[1]; g_grid = g_grid)
         convolved = copy(R)
+        src_lo, src_hi = table.energy_lo, table.energy_hi
     else
+        R_blur = rebin_flux(R, table.energy_lo, table.energy_hi, blur_lo, blur_hi)
         _, L = line_profile_kernel(
             gradus_params,
             rt.definition.corona_variant,
@@ -262,24 +310,26 @@ function evaluate_spectrum(
             g_grid = g_grid,
         )
         convolved = convolve_reflection(
-            R,
-            table.energy_lo,
-            table.energy_hi,
+            R_blur,
+            blur_lo,
+            blur_hi,
             g_grid,
             L;
             n_sub = n_sub,
         )
+        src_lo, src_hi = blur_lo, blur_hi
     end
 
     if verbose
         println(
             "GradusXSPEC: $(rt.definition.name) direct evaluation at ",
             "($(_format_gradus_grid_point(rt, gradus_params)); ",
-            "$(_format_reflection_grid_point(rt, refl_params)))",
+            "$(_format_reflection_grid_point(rt, refl_params))); ",
+            "blur bins=$(length(blur_lo))",
         )
     end
 
-    return _rebin_to_energy_edges(convolved, table.energy_lo, table.energy_hi, energy_edges)
+    return _rebin_to_energy_edges(convolved, src_lo, src_hi, energy_edges)
 end
 
 function build_model_runtimes(models = ALL_MODELS)

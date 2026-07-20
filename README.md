@@ -86,6 +86,12 @@ source $HEADAS/headas-init.sh
 ./build-xspec.sh
 ```
 
+On older Linux (e.g. Rocky/RHEL 8), start XSPEC with `./run-xspec.sh` instead of
+plain `xspec`. That prepends juliaup’s `libstdc++` to `LD_LIBRARY_PATH` so
+`lmod` does not pick up an older system or HEASoft `libstdc++` (which triggers
+`GLIBCXX_... not found` when loading `libgradusxspec.so`). Details are in the
+[Building](docs/src/build.md#julia-libstdc-on-older-linux-rocky--rhel-8) manual page.
+
 An optional Docker-based reproducibility check is documented in
 [`docker/README.md`](docker/README.md). See also the
 [Building](docs/src/build.md) page in the Documenter manual (`./build-docs.sh`).
@@ -136,6 +142,14 @@ Terminal logging and a fit-monitor file can be enabled via environment variables
 | `GRADUSXSPEC_MONITOR=1` | Write fit diagnostics to `gradusxspec_monitor.txt` in the repo root |
 | `GRADUSXSPEC_MONITOR=/path/to/file` | Same, but use a custom output path |
 | `GRADUSXSPEC_MONITOR_INTERVAL=N` | Refresh the monitor file every `N` evaluations (default 10) |
+| `GRADUSXSPEC_CACHE_LIMIT_GB=N` | Memory budget in GiB for Float32 convolution matrices, line spectra, and ring emissivity (default `16`; `0` = unlimited). LRU eviction when full. Line-profile kernels `L(g)` are cached separately and do not count toward this limit. |
+| `GRADUSXSPEC_KERNEL_CACHE=0` | Disable on-disk persistence of `L(g)` kernels (`1` / unset = enabled) |
+| `GRADUSXSPEC_KERNEL_CACHE_DIR=/path` | Directory for binary `L(g)` kernels (default: `$JULIA_DEPOT_PATH/gradusxspec/kernels`) |
+| `GRADUSXSPEC_BLUR_EMIN` / `EMAX` | Core blur band in keV (default `2`–`150`). Convolution matrices are built on this coarser grid, then rebinned to the XSPEC energy edges. |
+| `GRADUSXSPEC_BLUR_DE_ABS` / `DE_REL` | Core binning: `ΔE = max(DE_ABS, DE_REL × E)` (default `0.1` keV and `0.01`) |
+| `GRADUSXSPEC_BLUR_NATIVE=1` | Use the native reflection-table energy grid for blur (disables the coarse grid; much slower matrix builds) |
+
+Extremely coarse pads below/above the core band conserve flux that redshifts into or out of `[EMIN, EMAX]` given the `g` support of `L(g)`.
 
 Example:
 
