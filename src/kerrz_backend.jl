@@ -149,7 +149,7 @@ function _ensure_emissivity_fits!(
         string(nphotons),
         "--nthreads",
         string(_kerrz_nthreads()),
-        "--output-file",
+        "--output",
         dest,
     ]
     if variant == :kerrz_lamppost
