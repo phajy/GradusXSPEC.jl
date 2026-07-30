@@ -312,6 +312,13 @@ function _raw_line_profile(
         return _gaussian_line_profile(params[1], g_bins)
     end
 
+    if corona_variant in (:kerrz_lamppost, :kerrz_ring)
+        disc_variant == :thin || throw(ArgumentError(
+            "kerrz corona variants require disc_variant=:thin; got $disc_variant",
+        ))
+        return kerrz_raw_line_profile(params, g_bins, corona_variant)
+    end
+
     corona_variant in (:lamppost, :ring, :disc) ||
         throw(ArgumentError("unsupported corona variant: $corona_variant"))
     disc_variant in (:ss, :thin) ||
@@ -368,8 +375,8 @@ end
     line_profile_kernel(params, corona_variant, disc_variant; g_grid=default_g_grid()) -> (g, L)
 
 Evaluate a unit-area line-profile kernel `L(g)` for the given corona/disc geometry.
-`corona_variant` is `:lamppost`, `:ring`, `:disc`, or `:gauss`; `disc_variant`
-is `:ss`, `:thin`, or `:gauss`.
+`corona_variant` is `:lamppost`, `:ring`, `:disc`, `:kerrz_lamppost`, `:kerrz_ring`,
+or `:gauss`; `disc_variant` is `:ss`, `:thin`, or `:gauss`.
 """
 function line_profile_kernel(
     params::NTuple{N, Float64},

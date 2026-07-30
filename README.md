@@ -10,8 +10,10 @@ Call Gradus models from XSPEC.
 | `gradus_lamp_thin` | Lamppost | Thin disc | spin, inc, h + reflection |
 | `gradus_ring_thin` | Ring | Thin disc | spin, inc, r, h + reflection |
 | `gradus_disc_thin` | Disc (filled) | Thin disc | spin, inc, r (outer), h + reflection |
+| `kerrz_lamp_thin` | Lamppost ([kerrz](https://git.sr.ht/~fjebaker/kerrz) CLI) | Thin disc | spin, inc, h + reflection |
+| `kerrz_ring_thin` | Ring (kerrz CLI) | Thin disc | spin, inc, r, h + reflection |
 
-These models convolve an xillver reflection table with a Gradus relativistic line profile. Load the package once with `lmod gradusxspec .`, then use any model name in `model`.
+These models convolve an xillver reflection table with a relativistic line profile. Gradus models use Gradus.jl in-process; `kerrz_*` models shell out to the [kerrz](https://git.sr.ht/~fjebaker/kerrz) CLI for emissivity and line profiles so both families can be compared side-by-side in XSPEC. Load the package once with `lmod gradusxspec .`, then use any model name in `model`.
 
 ## Prerequisites
 
@@ -148,8 +150,13 @@ Terminal logging and a fit-monitor file can be enabled via environment variables
 | `GRADUSXSPEC_BLUR_EMIN` / `EMAX` | Core blur band in keV (default `2`–`150`). Convolution matrices are built on this coarser grid, then rebinned to the XSPEC energy edges. |
 | `GRADUSXSPEC_BLUR_DE_ABS` / `DE_REL` | Core binning: `ΔE = max(DE_ABS, DE_REL × E)` (default `0.1` keV and `0.01`) |
 | `GRADUSXSPEC_BLUR_NATIVE=1` | Use the native reflection-table energy grid for blur (disables the coarse grid; much slower matrix builds) |
+| `GRADUSXSPEC_KERRZ=/path/to/kerrz` | Path to the [kerrz](https://git.sr.ht/~fjebaker/kerrz) binary for `kerrz_*` models (default `~/GitHub/kerrz/zig-out/bin/kerrz`, else `kerrz` on `PATH`) |
+| `GRADUSXSPEC_KERRZ_NPHOTONS_LAMP` / `_RING` | Photon counts for kerrz `emissivity` (defaults `3000` / `50000`) |
+| `GRADUSXSPEC_KERRZ_NTHREADS` | Threads passed to kerrz (default: Julia `Threads.nthreads()`) |
 
 Extremely coarse pads below/above the core band conserve flux that redshifts into or out of `[EMIN, EMAX]` given the `g` support of `L(g)`.
+
+Cold `kerrz_*` evaluations spawn the CLI (`emissivity` then `lineprof`) and are slow until the shared L(g) kernel cache and optional emissivity FITS cache (`$JULIA_DEPOT_PATH/gradusxspec/kerrz_em/`) warm up.
 
 Example:
 

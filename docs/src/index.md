@@ -2,8 +2,9 @@
 
 GradusXSPEC connects [Gradus.jl](https://astro-group.codeberg.page/Gradus.jl/dev/)
 relativistic line profiles to [XSPEC](https://heasarc.gsfc.nasa.gov/docs/xanadu/xspec/)
-local models. Each model convolves an xillver reflection table with a Gradus
-corona geometry and accretion-disc setup.
+local models. Each model convolves an xillver reflection table with a corona
+geometry and accretion-disc setup. Parallel `kerrz_*` models obtain L(g) from
+the [kerrz](https://git.sr.ht/~fjebaker/kerrz) CLI for side-by-side comparison.
 
 ## Available models
 
@@ -13,6 +14,8 @@ corona geometry and accretion-disc setup.
 | `gradus_lamp_thin` | Lamppost | Thin disc |
 | `gradus_ring_thin` | Ring | Thin disc |
 | `gradus_disc_thin` | Filled disc | Thin disc |
+| `kerrz_lamp_thin` | Lamppost (kerrz CLI) | Thin disc |
+| `kerrz_ring_thin` | Ring (kerrz CLI) | Thin disc |
 | `test_gauss` | Gaussian blur (diagnostic) | — |
 
 Load the package once in XSPEC with `lmod gradusxspec .`, then select any model

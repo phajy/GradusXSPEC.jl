@@ -4,6 +4,7 @@ using Base: @ccallable
 using Gradus
 include("model_definition.jl")
 include("cache_memory.jl")
+include("kerrz_backend.jl")
 include("line_profile.jl")
 include("table_model.jl")
 include("convolution.jl")
@@ -39,7 +40,10 @@ export default_g_grid,
     LAMP_THIN_MODEL,
     RING_THIN_MODEL,
     DISC_THIN_MODEL,
-    TEST_GAUSS_MODEL
+    TEST_GAUSS_MODEL,
+    KERRZ_LAMP_THIN_MODEL,
+    KERRZ_RING_THIN_MODEL,
+    kerrz_binary_path
 
 const LINE_CACHE_LOCK = ReentrantLock()
 const LINE_SPECTRUM_CACHE =
@@ -320,6 +324,48 @@ end
 )::Cint
     return _xspec_model_entry_catch(
         MODEL_RUNTIMES[TEST_GAUSS_MODEL.name],
+        energy,
+        Nflux,
+        parameter,
+        spectrum,
+        flux,
+        fluxError,
+        init,
+    )
+end
+
+@ccallable function kerrzlampthinxspec(
+    energy::Ptr{Cdouble},
+    Nflux::Cint,
+    parameter::Ptr{Cdouble},
+    spectrum::Cint,
+    flux::Ptr{Cdouble},
+    fluxError::Ptr{Cdouble},
+    init::Ptr{Cchar},
+)::Cint
+    return _xspec_model_entry_catch(
+        MODEL_RUNTIMES[KERRZ_LAMP_THIN_MODEL.name],
+        energy,
+        Nflux,
+        parameter,
+        spectrum,
+        flux,
+        fluxError,
+        init,
+    )
+end
+
+@ccallable function kerrzringthinxspec(
+    energy::Ptr{Cdouble},
+    Nflux::Cint,
+    parameter::Ptr{Cdouble},
+    spectrum::Cint,
+    flux::Ptr{Cdouble},
+    fluxError::Ptr{Cdouble},
+    init::Ptr{Cchar},
+)::Cint
+    return _xspec_model_entry_catch(
+        MODEL_RUNTIMES[KERRZ_RING_THIN_MODEL.name],
         energy,
         Nflux,
         parameter,

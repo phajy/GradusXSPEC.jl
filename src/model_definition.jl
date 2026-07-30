@@ -9,8 +9,10 @@ const LAMP_SS_GRADUS_PARAMETERS = (
         name = "spin",
         unit = "",
         initial = 0.998,
-        soft_min = 0.0,
-        hard_min = 0.0,
+        # Floor at 0.1: kerrz ring emissivity at spin=0 yields no disc hits
+        # and lineprof NaNs (see kerrz_bugs.md). Keep Gradus/kerrz grids aligned.
+        soft_min = 0.1,
+        hard_min = 0.1,
         soft_max = 0.998,
         hard_max = 0.998,
         delta = 0.05,
@@ -58,8 +60,9 @@ const LAMP_THIN_GRADUS_PARAMETERS = (
         name = "spin",
         unit = "",
         initial = 0.998,
-        soft_min = 0.0,
-        hard_min = 0.0,
+        # Floor at 0.1: see kerrz_bugs.md (spin=0 ring path); keep grids aligned.
+        soft_min = 0.1,
+        hard_min = 0.1,
         soft_max = 0.998,
         hard_max = 0.998,
         delta = 0.05,
@@ -96,8 +99,9 @@ const RING_THIN_GRADUS_PARAMETERS = (
         name = "spin",
         unit = "",
         initial = 0.998,
-        soft_min = 0.0,
-        hard_min = 0.0,
+        # Floor at 0.1: see kerrz_bugs.md (spin=0 ring path); keep grids aligned.
+        soft_min = 0.1,
+        hard_min = 0.1,
         soft_max = 0.998,
         hard_max = 0.998,
         delta = 0.05,
@@ -301,12 +305,36 @@ const TEST_GAUSS_MODEL = XspecModelDefinition(
     :gauss,
 )
 
+# Parallel thin models that obtain L(g) via the external kerrz CLI
+# (https://git.sr.ht/~fjebaker/kerrz) instead of Gradus.jl.
+const KERRZ_LAMP_THIN_MODEL = XspecModelDefinition(
+    "kerrz_lamp_thin",
+    "c_kerrzlampthinjulia",
+    "kerrzlampthinxspec",
+    LAMP_THIN_GRADUS_PARAMETERS,
+    REFLECTION_PARAMETERS,
+    :kerrz_lamppost,
+    :thin,
+)
+
+const KERRZ_RING_THIN_MODEL = XspecModelDefinition(
+    "kerrz_ring_thin",
+    "c_kerrzringthinjulia",
+    "kerrzringthinxspec",
+    RING_THIN_GRADUS_PARAMETERS,
+    REFLECTION_PARAMETERS,
+    :kerrz_ring,
+    :thin,
+)
+
 const ALL_MODELS = (
     LAMP_SS_MODEL,
     LAMP_THIN_MODEL,
     RING_THIN_MODEL,
     DISC_THIN_MODEL,
     TEST_GAUSS_MODEL,
+    KERRZ_LAMP_THIN_MODEL,
+    KERRZ_RING_THIN_MODEL,
 )
 
 # Backwards-compatible aliases for the original lamppost + S&S model.
