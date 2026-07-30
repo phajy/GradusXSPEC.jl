@@ -28,7 +28,7 @@ the same five reflection parameters (`Refl_Gamma`, `Refl_A_Fe`, `Refl_logXi`,
 
 - **`gradus_ring_thin`** — emission from a single co-rotating ring corona at
   radius `r` and height `h` above a thin disc.
-- **`gradus_disc_thin`** — filled disc corona of outer radius `r` at height `h`.
+- **`gradus_disc_thin`** — filled disc corona of outer radius `r` at height `h` (Gradus-style stack of concentric rings from `1e-2` r_g to `r`).
   Implemented as a nested stack of ring coronae on the Gradus `r` parameter
   grid (all rings with radius ≤ `r`), with `r·Δr` weighting (uniform surface
   brightness). Ring emissivity profiles are cached so larger outer radii reuse

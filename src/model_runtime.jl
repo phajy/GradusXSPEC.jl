@@ -61,8 +61,9 @@ function _convolution_cache_signature(
     g_grid::AbstractVector{<:Real},
     n_sub::Int,
     blur_sig::UInt64,
+    backend_sig::UInt64 = UInt64(0),
 )
-    return UInt64(hash(blur_sig, hash(g_grid, hash(n_sub))))
+    return UInt64(hash(backend_sig, hash(blur_sig, hash(g_grid, hash(n_sub)))))
 end
 
 const MATRIX_CACHE_LOCK = ReentrantLock()
@@ -98,7 +99,8 @@ function _get_or_compute_convolution_matrix(
     n_sub::Int = 4,
 ) where {N}
     blur_sig = blur_grid_signature(blur_lo, blur_hi)
-    sig = _convolution_cache_signature(g_grid, n_sub, blur_sig)
+    backend_sig = _line_kernel_backend_signature(rt.definition.corona_variant)
+    sig = _convolution_cache_signature(g_grid, n_sub, blur_sig, backend_sig)
     key = (rt.definition.name, sig, n_sub, table_path, gradus_idx)
 
     cached = _bounded_cache_lookup!(

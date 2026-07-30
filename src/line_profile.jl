@@ -93,16 +93,14 @@ function _corona_n_samples(::Val{:disc})
     return 256
 end
 
-# Fixed radial mesh for the filled disc corona, matching the Gradus `r`
-# parameter grid (currently 2, 3, …, 50). Gradus DiscCorona.emissivity_profile
-# is unusable here (DiscCoronaProfile expects RingCoronaProfile, but the
-# optimized RingCorona path returns RingApproximation), so we stack RingCorona
-# profiles with r·Δr weights (uniform corona surface brightness). Nested in
-# outer radius R: larger discs reuse emissivity for all mesh rings with r ≤ R.
-const DISC_CORONA_RADIAL_MESH = build_parameter_grid(DISC_THIN_GRADUS_PARAMETERS[3])
-const DISC_CORONA_DELTA_R = let mesh = DISC_CORONA_RADIAL_MESH
-    length(mesh) >= 2 ? mesh[2] - mesh[1] : 1.0
-end
+# Match Gradus DiscCorona defaults: n concentric rings from r_inner to r_outer
+# with r·Δr weighting (uniform corona surface brightness). Gradus
+# DiscCorona.emissivity_profile is unusable here (DiscCoronaProfile expects
+# RingCoronaProfile, but the optimized RingCorona path returns
+# RingApproximation), so we stack RingCorona profiles ourselves. Individual
+# ring emissivities are cached by (spin, r, h).
+const DISC_CORONA_N_RINGS = 10
+const DISC_CORONA_R_INNER = 1e-2
 
 const RING_EMISSIVITY_CACHE_LOCK = ReentrantLock()
 const RING_EMISSIVITY_CACHE = Dict{NTuple{3, Float64}, Any}()
@@ -196,38 +194,27 @@ function ring_emissivity_cache_stats()
 end
 
 """
-Mesh radii included in a disc corona of outer radius `r_outer` (all grid
-points with `r ≤ r_outer`).
-"""
-function _disc_corona_radii_upto(r_outer::Float64)
-    mesh = DISC_CORONA_RADIAL_MESH
-    r_min = first(mesh)
-    r_outer >= r_min || throw(ArgumentError(
-        "disc corona outer radius ($r_outer) must be >= mesh inner ($r_min)",
-    ))
-    idx = searchsortedlast(mesh, r_outer)
-    idx < 1 && throw(ArgumentError(
-        "disc corona outer radius ($r_outer) is below the radial mesh",
-    ))
-    return view(mesh, 1:idx)
-end
+Build a disc-corona emissivity function matching Gradus `DiscCorona`:
 
-"""
-Build a disc-corona emissivity function on the fixed radial mesh:
+    radii = range(r_inner, r_outer, n_rings)
+    ε(ρ) = Σᵢ ε_ringᵢ(ρ) · rᵢ · Δr
 
-    ε(ρ; R) = Σ_{rᵢ ≤ R} ε_ringᵢ(ρ) · rᵢ · Δr
-
-Ring emissivity profiles are cached so larger outer radii reuse smaller rings.
+Ring emissivity profiles are cached by `(spin, r, h)`.
 """
 function _disc_corona_emissivity(
     m::KerrMetric,
     d,
     r_outer::Float64,
     height::Float64;
+    n_rings::Int = DISC_CORONA_N_RINGS,
     n_samples::Int = _corona_n_samples(Val(:disc)),
+    r_inner::Float64 = DISC_CORONA_R_INNER,
 )
-    radii = _disc_corona_radii_upto(r_outer)
-    δr = DISC_CORONA_DELTA_R
+    r_outer >= r_inner || throw(ArgumentError(
+        "disc corona outer radius ($r_outer) must be >= inner ($r_inner)",
+    ))
+    radii = collect(range(r_inner, r_outer; length = n_rings))
+    δr = n_rings > 1 ? (radii[2] - radii[1]) : r_outer
     profiles = [
         _get_or_compute_ring_emissivity(m, d, r, height; n_samples = n_samples) for
         r in radii
