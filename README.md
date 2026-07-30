@@ -144,7 +144,7 @@ Terminal logging and a fit-monitor file can be enabled via environment variables
 | `GRADUSXSPEC_MONITOR=1` | Write fit diagnostics to `gradusxspec_monitor.txt` in the repo root |
 | `GRADUSXSPEC_MONITOR=/path/to/file` | Same, but use a custom output path |
 | `GRADUSXSPEC_MONITOR_INTERVAL=N` | Refresh the monitor file every `N` evaluations (default 10) |
-| `GRADUSXSPEC_CACHE_LIMIT_GB=N` | Memory budget in GiB for Float32 convolution matrices, line spectra, and ring emissivity (default `16`; `0` = unlimited). LRU eviction when full. Line-profile kernels `L(g)` are cached separately and do not count toward this limit. |
+| `GRADUSXSPEC_CACHE_LIMIT_GB=N` | Memory budget in GiB for Float32 convolution matrices, line spectra, and ring emissivity (default `16`; `0` = unlimited). LRU eviction when full; entries that still cannot fit are not cached. Line-profile kernels `L(g)` are cached separately and do not count toward this limit. |
 | `GRADUSXSPEC_KERNEL_CACHE=0` | Disable on-disk persistence of `L(g)` kernels (`1` / unset = enabled) |
 | `GRADUSXSPEC_KERNEL_CACHE_DIR=/path` | Directory for binary `L(g)` kernels (default: `$JULIA_DEPOT_PATH/gradusxspec/kernels`) |
 | `GRADUSXSPEC_BLUR_EMIN` / `EMAX` | Core blur band in keV (default `2`–`150`). Convolution matrices are built on this coarser grid, then rebinned to the XSPEC energy edges. |
@@ -158,7 +158,7 @@ Terminal logging and a fit-monitor file can be enabled via environment variables
 
 Extremely coarse pads below/above the core band conserve flux that redshifts into or out of `[EMIN, EMAX]` given the `g` support of `L(g)`.
 
-Cold `kerrz_*` evaluations spawn the CLI (`emissivity` then `lineprof`) and are slow until the shared L(g) kernel cache and optional emissivity FITS cache (`$JULIA_DEPOT_PATH/gradusxspec/kerrz_em/`) warm up.
+Cold `kerrz_*` evaluations spawn the CLI (`emissivity` then `lineprof`) and are slow until the shared L(g) kernel cache and optional emissivity FITS cache (`$JULIA_DEPOT_PATH/gradusxspec/kerrz_em/`) warm up. Those caches key on the resolved kerrz binary, `kerrz --version`, photon counts, `GRADUSXSPEC_KERRZ_ROUT`, and related settings, so changing them (or upgrading kerrz) invalidates stale entries.
 
 Example:
 

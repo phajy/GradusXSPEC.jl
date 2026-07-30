@@ -66,11 +66,12 @@ end
 
 """
 Free LRU entries across registered caches until `needed` additional bytes fit
-under the budget (or caches are empty). Caller must hold `CACHE_BUDGET_LOCK`.
+under the budget (or caches are empty). Returns `true` if the entry can fit.
+Caller must hold `CACHE_BUDGET_LOCK`.
 """
 function _evict_until_free!(needed::Integer)
     limit = cache_memory_limit_bytes()
-    iszero(limit) && return
+    iszero(limit) && return true
     need = UInt64(needed)
     while CACHE_MEMORY_USED_BYTES[] + need > limit
         freed = UInt64(0)
@@ -78,9 +79,9 @@ function _evict_until_free!(needed::Integer)
             freed = f()::UInt64
             freed > 0 && break
         end
-        freed == 0 && break
+        freed == 0 && return false
     end
-    return nothing
+    return true
 end
 
 function _bounded_cache_lookup!(cache_lock::ReentrantLock, dict::Dict, order::Vector, key)
@@ -95,7 +96,9 @@ end
 
 """
 Insert `value` under `key` if absent, respecting the shared memory budget.
-Returns the cached value (existing or newly stored).
+Returns the cached value (existing or newly stored). If the entry still cannot
+fit after full LRU eviction, returns `value` without inserting so the budget
+cannot grow past `GRADUSXSPEC_CACHE_LIMIT_GB`.
 `nbytes` is the approximate size of `value`.
 """
 function _bounded_cache_put!(
@@ -114,7 +117,10 @@ function _bounded_cache_put!(
         end
         existing !== nothing && return existing
 
-        _evict_until_free!(nb)
+        if !_evict_until_free!(nb)
+            # Entry larger than remaining budget (or entire limit); skip cache.
+            return value
+        end
 
         return lock(cache_lock) do
             if haskey(dict, key)

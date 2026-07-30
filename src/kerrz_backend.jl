@@ -8,6 +8,10 @@ const DEFAULT_KERRZ_ROUT = 400.0
 const DEFAULT_KERRZ_NPHOTONS_LAMP = 3000
 const DEFAULT_KERRZ_NPHOTONS_RING = 50_000
 const DEFAULT_KERRZ_NG = 1000
+# Bump when emissivity/lineprof CLI flags or expected FITS/CSV layout change.
+const KERRZ_CACHE_FORMAT = "1"
+const KERRZ_VERSION_CACHE = Dict{String, String}()
+const KERRZ_VERSION_LOCK = ReentrantLock()
 
 function _env_int(name::AbstractString, default::Int)
     raw = get(ENV, name, "")
@@ -80,6 +84,59 @@ function _kerrz_em_cache_dir()
     return joinpath(first(DEPOT_PATH), "gradusxspec", "kerrz_em")
 end
 
+"""
+    _kerrz_version_string(bin) -> String
+
+Cached `kerrz --version` output for `bin`. Used in on-disk and L(g) cache keys
+so upgrades invalidate stale emissivity FITS / line profiles.
+"""
+function _kerrz_version_string(bin::AbstractString)
+    return lock(KERRZ_VERSION_LOCK) do
+        get!(KERRZ_VERSION_CACHE, bin) do
+            cmd = Cmd(`$bin --version`; ignorestatus = true)
+            buf_out = IOBuffer()
+            buf_err = IOBuffer()
+            proc = run(pipeline(cmd; stdout = buf_out, stderr = buf_err))
+            out = strip(String(take!(buf_out)))
+            err = strip(String(take!(buf_err)))
+            if success(proc) && !isempty(out)
+                return out
+            end
+            # Still fingerprint something stable so cache keys change if probing fails.
+            return "unknown:exit=$(proc.exitcode):out=$(out):err=$(err)"
+        end
+    end
+end
+
+function _kerrz_nphotons_for(variant::Symbol)
+    if variant == :kerrz_lamppost
+        return _kerrz_nphotons_lamp()
+    elseif variant == :kerrz_ring
+        return _kerrz_nphotons_ring()
+    end
+    throw(ArgumentError("unsupported kerrz variant for photon count: $variant"))
+end
+
+"""
+Fingerprint of kerrz binary + CLI settings that affect L(g) (and emissivity FITS).
+"""
+function _kerrz_runtime_fingerprint(variant::Symbol; bin::AbstractString = kerrz_binary_path())
+    return join(
+        [
+            abspath(bin),
+            _kerrz_version_string(bin),
+            KERRZ_CACHE_FORMAT,
+            string(variant),
+            string(_kerrz_nphotons_for(variant)),
+            string(DEFAULT_KERRZ_PHOTON_INDEX),
+            string(_kerrz_rout()),
+            string(DEFAULT_KERRZ_NG),
+            "corotate",
+        ],
+        "|",
+    )
+end
+
 function _kerrz_run!(bin::AbstractString, args::Vector{String}; label::AbstractString)
     cmd = Cmd(`$bin $args`; ignorestatus = true)
     buf_out = IOBuffer()
@@ -99,6 +156,7 @@ function _kerrz_run!(bin::AbstractString, args::Vector{String}; label::AbstractS
 end
 
 function _emissivity_cache_key(
+    bin::AbstractString,
     variant::Symbol,
     spin::Float64,
     height::Float64,
@@ -106,13 +164,11 @@ function _emissivity_cache_key(
     nphotons::Int,
 )
     parts = [
-        string(variant),
+        _kerrz_runtime_fingerprint(variant; bin = bin),
         string(spin),
         string(height),
         radius === nothing ? "-" : string(radius),
         string(nphotons),
-        string(DEFAULT_KERRZ_PHOTON_INDEX),
-        "corotate",
     ]
     return string(hash(join(parts, "|")); base = 16)
 end
@@ -125,14 +181,10 @@ function _ensure_emissivity_fits!(
     radius::Union{Float64, Nothing},
     dest::AbstractString,
 )
-    nphotons = if variant == :kerrz_lamppost
-        _kerrz_nphotons_lamp()
-    else
-        _kerrz_nphotons_ring()
-    end
+    nphotons = _kerrz_nphotons_for(variant)
     cache_dir = _kerrz_em_cache_dir()
     mkpath(cache_dir)
-    key = _emissivity_cache_key(variant, spin, height, radius, nphotons)
+    key = _emissivity_cache_key(bin, variant, spin, height, radius, nphotons)
     cached = joinpath(cache_dir, "em_$(key).fits")
     if isfile(cached) && filesize(cached) > 0
         cp(cached, dest; force = true)

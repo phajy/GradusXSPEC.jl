@@ -5,8 +5,10 @@ const KERNEL_CACHE_FORMAT_VERSION = UInt32(1)
 const KERNEL_CACHE_MAGIC = b"GXKL"
 
 const KERNEL_CACHE_LOCK = ReentrantLock()
+# Key: (model name, g-grid sig, Gradus grid indices, backend sig).
+# Backend sig captures kerrz binary/version/env settings (0 for Gradus/gauss).
 const LINE_KERNEL_CACHE =
-    Dict{Tuple{String, UInt64, Tuple{Vararg{Int}}}, Vector{Float64}}()
+    Dict{Tuple{String, UInt64, Tuple{Vararg{Int}}, UInt64}, Vector{Float64}}()
 const KERNEL_CACHE_HITS = Ref(0)
 const KERNEL_CACHE_MISSES = Ref(0)
 const KERNEL_DISK_LOADS = Ref(0)
@@ -14,6 +16,18 @@ const KERNEL_DISK_SAVES = Ref(0)
 
 function _kernel_g_grid_signature(g_grid::AbstractVector{<:Real})
     return UInt64(hash(g_grid))
+end
+
+"""
+Backend fingerprint for L(g) RAM/disk keys. Kerrz entries include binary path,
+`--version`, photon counts, `rout`/`ng`, and `KERRZ_CACHE_FORMAT` so env or
+binary upgrades cannot reuse stale profiles.
+"""
+function _line_kernel_backend_signature(corona_variant::Symbol)
+    if corona_variant in (:kerrz_lamppost, :kerrz_ring)
+        return UInt64(hash(_kerrz_runtime_fingerprint(corona_variant)))
+    end
+    return UInt64(0)
 end
 
 function _kernel_disk_enabled()
@@ -120,7 +134,8 @@ function _get_or_compute_line_kernel(
     g_grid::AbstractVector{<:Real} = default_g_grid(),
 ) where {N}
     g_sig = _kernel_g_grid_signature(g_grid)
-    key = (rt.definition.name, g_sig, gradus_idx)
+    backend_sig = _line_kernel_backend_signature(rt.definition.corona_variant)
+    key = (rt.definition.name, g_sig, gradus_idx, backend_sig)
 
     cached = lock(KERNEL_CACHE_LOCK) do
         get(LINE_KERNEL_CACHE, key, nothing)
