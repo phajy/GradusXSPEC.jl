@@ -115,10 +115,14 @@ function build_convolution_matrix(
 end
 
 """
-    convolve_reflection(R, em_lo, em_hi, g_grid, L; out_lo=em_lo, out_hi=em_hi)
+    convolve_reflection(R, em_lo, em_hi, g_grid, L; out_lo=em_lo, out_hi=em_hi, method)
 
 Convolve rest-frame reflection bin fluxes `R` with a unit-area line-profile
 kernel `L(g)`.
+
+`method` defaults to [`convolution_method`](@ref) (`:fft` unless
+`GRADUSXSPEC_CONVOLVE=matrix`). Use `:matrix` for the legacy bin-integrated
+matrix path or `:fft` for log-energy FFT convolution.
 """
 function convolve_reflection(
     R::AbstractVector{<:Real},
@@ -129,10 +133,34 @@ function convolve_reflection(
     out_lo::AbstractVector{<:Real} = em_lo,
     out_hi::AbstractVector{<:Real} = em_hi,
     n_sub::Int = 4,
+    method::Symbol = convolution_method(),
+    n_log::Union{Nothing, Int} = nothing,
 )
-    length(R) == length(em_lo) || throw(ArgumentError("R must match the emission grid"))
-    M = build_convolution_matrix(em_lo, em_hi, out_lo, out_hi, g_grid, L; n_sub = n_sub)
-    return M * Vector{Float64}(R)
+    if method === :fft
+        return convolve_reflection_fft(
+            R,
+            em_lo,
+            em_hi,
+            g_grid,
+            L;
+            out_lo = out_lo,
+            out_hi = out_hi,
+            n_log = n_log,
+        )
+    elseif method === :matrix
+        return convolve_reflection_matrix(
+            R,
+            em_lo,
+            em_hi,
+            g_grid,
+            L;
+            out_lo = out_lo,
+            out_hi = out_hi,
+            n_sub = n_sub,
+        )
+    else
+        throw(ArgumentError("unknown convolution method: $method (use :fft or :matrix)"))
+    end
 end
 
 """

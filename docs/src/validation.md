@@ -20,12 +20,15 @@ julia --project=. -e 'using Pkg; Pkg.add("Plots")'
 julia --project=. scripts/validate_table.jl
 julia --project=. scripts/validate_line_profile.jl
 julia --project=. scripts/validate_convolution.jl
+julia --project=. scripts/compare_convolution_methods.jl
 julia --project=. scripts/validate_spectrum.jl
 ```
 
 The line-profile script calls Gradus and can take one to two minutes on first run.
 `validate_spectrum.jl` compares the direct evaluation path against the
 grid-interpolated path used in XSPEC.
+`compare_convolution_methods.jl` checks that the default log-energy FFT blur
+agrees with the legacy matrix path (`GRADUSXSPEC_CONVOLVE=matrix`).
 
 ## Generate plots
 
@@ -67,12 +70,18 @@ After running `plot_validation.jl`, expect:
 ```text
 xillver FITS  →  R(E)              [table_model.jl]
 Gradus params  →  L(g)              [line_profile.jl]
-R, L           →  F = M * R         [convolution.jl]
+R, L           →  F = blur(R, L)    [convolution.jl / convolution_fft.jl]
 F              →  XSPEC energies    [spectrum.jl]
 ```
 
+Blurring defaults to a **log-energy FFT** (`GRADUSXSPEC_CONVOLVE=fft`) that
+implements the multiplicative redshift kernel via the convolution theorem.
+Set `GRADUSXSPEC_CONVOLVE=matrix` for the legacy bin-integrated matrix path
+(still used for comparisons and cached Float32 matrices when selected).
+
 `evaluate_spectrum_interpolated` is what the XSPEC entry points call; it
-interpolates across parameter grids and caches convolution matrices.
+interpolates across parameter grids. With `matrix` mode it caches convolution
+matrices; with `fft` mode it applies `convolve_reflection_fft` per Gradus corner.
 `evaluate_spectrum` evaluates at exact parameters and is used for validation.
 
 ## XSPEC smoke test (Linux or macOS)

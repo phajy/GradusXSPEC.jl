@@ -150,6 +150,8 @@ Terminal logging and a fit-monitor file can be enabled via environment variables
 | `GRADUSXSPEC_BLUR_EMIN` / `EMAX` | Core blur band in keV (default `2`–`150`). Convolution matrices are built on this coarser grid, then rebinned to the XSPEC energy edges. |
 | `GRADUSXSPEC_BLUR_DE_ABS` / `DE_REL` | Core binning: `ΔE = max(DE_ABS, DE_REL × E)` (default `0.1` keV and `0.01`) |
 | `GRADUSXSPEC_BLUR_NATIVE=1` | Use the native reflection-table energy grid for blur (disables the coarse grid; much slower matrix builds) |
+| `GRADUSXSPEC_CONVOLVE=fft\|matrix` | Blur method: log-energy FFT (default) or legacy bin-integrated matrix |
+| `GRADUSXSPEC_FFT_NBINS=N` | Override FFT uniform log-E bin count (default ~0.5% spacing, minimum 1024) |
 | `GRADUSXSPEC_KERRZ=/path/to/kerrz` | Path to the [kerrz](https://git.sr.ht/~fjebaker/kerrz) binary for `kerrz_*` models (default `~/GitHub/kerrz/zig-out/bin/kerrz`, else `kerrz` on `PATH`) |
 | `GRADUSXSPEC_KERRZ_NPHOTONS_LAMP` / `_RING` | Photon counts for kerrz `emissivity` (defaults `3000` / `50000`) |
 | `GRADUSXSPEC_KERRZ_NTHREADS` | Threads passed to kerrz (default: Julia `Threads.nthreads()`) |

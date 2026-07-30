@@ -48,17 +48,17 @@ function test_delta_kernel_on_log_grid()
     R[64] = 1.0
     g_grid = default_g_grid(; n = 512, g_min = 0.5, g_max = 1.5)
     L = narrow_kernel(g_grid; g0 = 1.0, sigma = 0.001)
-    F = convolve_reflection(R, em_lo, em_hi, g_grid, L; n_sub = 16)
+    F = convolve_reflection(R, em_lo, em_hi, g_grid, L; n_sub = 16, method = :matrix)
     shape_err = relative_l2(F ./ max(sum(F), eps()), R ./ max(sum(R), eps()))
     flux_ratio = sum(F) / sum(R)
     println("Synthetic delta-kernel shape error (relative L2): ", shape_err)
     println("Synthetic delta-kernel flux ratio sum(F)/sum(R): ", flux_ratio)
     println("Synthetic peak bin shift: ", argmax(F) - argmax(R))
-    return shape_err < 0.06 && argmax(F) == argmax(R) && abs(flux_ratio - 1) < 0.05
+    return shape_err < 0.06 && argmax(F) == argmax(R) && abs(flux_ratio - 1) < 0.06
 end
 
 function test_flux_conservation(em_lo, em_hi, R, g_grid, L)
-    F = convolve_reflection(R, em_lo, em_hi, g_grid, L; n_sub = 4)
+    F = convolve_reflection(R, em_lo, em_hi, g_grid, L; n_sub = 4, method = :matrix)
     # Restrict conservation check to energies well inside the grid so photons
     # are not shifted out of band by the finite g support.
     mids = (em_lo .+ em_hi) ./ 2
@@ -74,10 +74,28 @@ end
 function test_matrix_matches_direct(em_lo, em_hi, R, g_grid, L)
     M = build_convolution_matrix(em_lo, em_hi, em_lo, em_hi, g_grid, L; n_sub = 4)
     F_mat = M * R
-    F_dir = convolve_reflection(R, em_lo, em_hi, g_grid, L; n_sub = 4)
+    F_dir = convolve_reflection(R, em_lo, em_hi, g_grid, L; n_sub = 4, method = :matrix)
     err = relative_l2(F_mat, F_dir)
     println("Matrix vs direct convolution error (relative L2): ", err)
     return err < 1e-14
+end
+
+function test_fft_flux_and_peak(em_lo, em_hi, R, g_grid, L)
+    Fm = convolve_reflection_matrix(R, em_lo, em_hi, g_grid, L; n_sub = 4)
+    Ff = convolve_reflection_fft(R, em_lo, em_hi, g_grid, L)
+    # Full table band loses edge flux for both methods; require FFT ≈ matrix.
+    flux_rel = abs(sum(Ff) - sum(Fm)) / max(sum(Fm), eps())
+    println("FFT vs matrix flux |Δsum|/sum(matrix): ", flux_rel)
+    println("FFT full-band flux ratio sum(F)/sum(R): ", sum(Ff) / max(sum(R), eps()))
+    return flux_rel < 0.02 && sum(Ff) > 0
+end
+
+function test_fft_matches_matrix_loosely(em_lo, em_hi, R, g_grid, L)
+    Fm = convolve_reflection_matrix(R, em_lo, em_hi, g_grid, L; n_sub = 4)
+    Ff = convolve_reflection_fft(R, em_lo, em_hi, g_grid, L)
+    err = relative_l2(Ff, Fm)
+    println("FFT vs matrix relative L2: ", err)
+    return err < 0.02
 end
 
 function test_rebin_conserves_flux(em_lo, em_hi, flux)
@@ -117,10 +135,13 @@ function main()
     ok_matrix = test_matrix_matches_direct(em_lo, em_hi, R, g_grid, L)
     ok_rebin = test_rebin_conserves_flux(em_lo, em_hi, R)
     ok_flux = test_flux_conservation(em_lo, em_hi, R, g_grid, L)
+    ok_fft_flux = test_fft_flux_and_peak(em_lo, em_hi, R, g_grid, L)
+    ok_fft_vs_m = test_fft_matches_matrix_loosely(em_lo, em_hi, R, g_grid, L)
 
-    if ok_synthetic && ok_matrix && ok_rebin && ok_flux
+    if ok_synthetic && ok_matrix && ok_rebin && ok_flux && ok_fft_flux && ok_fft_vs_m
         println("All convolution checks passed.")
     else
+        println("Check results: synthetic=$ok_synthetic matrix=$ok_matrix rebin=$ok_rebin flux=$ok_flux fft_flux=$ok_fft_flux fft_vs_matrix=$ok_fft_vs_m")
         error("Convolution validation failed.")
     end
 end

@@ -8,6 +8,7 @@ include("kerrz_backend.jl")
 include("line_profile.jl")
 include("table_model.jl")
 include("convolution.jl")
+include("convolution_fft.jl")  # FFT path + convolution_method; after matrix helpers
 include("blur_grid.jl")
 include("spectrum.jl")
 include("model_runtime.jl")
@@ -24,7 +25,11 @@ export default_g_grid,
     interpolate_table_spectrum,
     interpolate_line_kernel,
     build_convolution_matrix,
+    convolution_method,
     convolve_reflection,
+    convolve_reflection_fft,
+    convolve_reflection_matrix,
+    log_energy_bin_edges,
     rebin_flux,
     parse_init_string,
     InitConfig,

@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "34bb192c371a08687762014cbc8b68793528a07a"
+project_hash = "9ae9221af4b43bcac984cdee3e177790da1c0e20"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "d9aaef7c63466eee4de23b4d9dad03629df54bea"
@@ -682,7 +682,7 @@ version = "0.4.32"
     DiffEqGPU = "071ae1c0-96b5-11e9-1965-c90190d839ea"
 
 [[deps.GradusXSPEC]]
-deps = ["FITSIO", "Gradus", "PackageCompiler"]
+deps = ["FFTW", "FITSIO", "Gradus", "PackageCompiler"]
 path = "."
 uuid = "8153e274-656c-44e5-9129-66f17e150590"
 version = "0.2.0"
