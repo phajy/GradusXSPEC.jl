@@ -114,6 +114,35 @@ scoping the fix to this build without mutating the shared HEASOFT install.
 As a last resort, `./fix-heasoft-f77libs.sh` (no arguments) rewrites `F77LIBS4C`
 across the HEASOFT tree in place.
 
+### macOS (TBB malloc-proxy segfault)
+
+Symptom: `xspec` dies with `signal 11 ... __TBB_malloc_safer_msize at
+.../libtbbmalloc.2.dylib` as soon as the GradusXSPEC model library loads
+(often while sourcing the RC file).
+
+Cause: FFTW.jl and LinearSolve.jl (a Gradus dependency) depend on `MKL_jll`,
+which pulls `oneTBB_jll` into the PackageCompiler bundle. On macOS the
+oneTBB_jll wrapper eagerly `dlopen`s **`libtbbmalloc_proxy`** during module
+init — and in a PackageCompiler library all inits run when XSPEC loads
+`libgradusxspec.dylib`. That proxy replaces the process-wide macOS malloc
+zone on load, so memory XSPEC allocated *before* our library loaded segfaults
+when freed *afterwards*. Nothing in the process actually uses TBB (MKL does
+not exist on Apple Silicon); the proxy is pure collateral.
+
+Fix: `src/build_lib.jl` runs
+[`scripts/stub_tbbmalloc_proxy.jl`](https://github.com/phajy/GradusXSPEC.jl/blob/main/scripts/stub_tbbmalloc_proxy.jl)
+after `create_library`, replacing the bundled `libtbbmalloc_proxy*.dylib`
+with an empty stub dylib. The JLL still dlopens it successfully, but no
+malloc-zone hijack occurs. The script can also be run standalone against an
+existing bundle:
+
+```sh
+julia scripts/stub_tbbmalloc_proxy.jl build
+```
+
+Linux is unaffected (the JLL dlopens without `RTLD_GLOBAL`, so the proxy's
+malloc symbols never interpose).
+
 ### Docker (optional reproducibility)
 
 If you do not have a local Linux HEASOFT install, or want a clean-room check, see
