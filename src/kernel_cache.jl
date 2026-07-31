@@ -21,11 +21,19 @@ end
 """
 Backend fingerprint for L(g) RAM/disk keys. Kerrz entries include binary path,
 `--version`, photon counts, `rout`/`ng`, and `KERRZ_CACHE_FORMAT` so env or
-binary upgrades cannot reuse stale profiles.
+binary upgrades cannot reuse stale profiles. Disc-corona entries include the
+ring-stacking radial mesh so a discretisation change invalidates cached
+kernels (RAM and disk) instead of silently reusing the old geometry.
 """
 function _line_kernel_backend_signature(corona_variant::Symbol)
     if corona_variant in (:kerrz_lamppost, :kerrz_ring)
         return UInt64(hash(_kerrz_runtime_fingerprint(corona_variant)))
+    elseif corona_variant == :disc
+        return UInt64(hash((
+            "disc-ring-mesh",
+            DISC_CORONA_RADIAL_MESH,
+            DISC_CORONA_DELTA_R,
+        )))
     end
     return UInt64(0)
 end

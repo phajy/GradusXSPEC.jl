@@ -1,5 +1,6 @@
 using PackageCompiler
 include("model_definition.jl")
+include(joinpath(dirname(@__DIR__), "scripts", "stub_tbbmalloc_proxy.jl"))
 
 # This generates the library in a "build" folder
 # It creates libGradusXSPEC.so (Linux) or .dll (Windows) and a header file
@@ -12,6 +13,10 @@ create_library(
     include_transitive_dependencies=true,
     include_lazy_artifacts=true
 )
+
+# macOS: neutralise oneTBB's malloc-zone hijack, which segfaults XSPEC.
+# See scripts/stub_tbbmalloc_proxy.jl for the full rationale.
+stub_tbbmalloc_proxy!("build")
 
 # Create model.dat for all XSPEC models in this package.
 write("model.dat", model_dat_text())
