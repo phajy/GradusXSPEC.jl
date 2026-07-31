@@ -1,0 +1,38 @@
+# Keep the Docker build context small and platform-clean. In particular, never
+# ship the macOS build tree (.dylib, macOS Julia sysimage) into a Linux image;
+# the container rebuilds everything from source.
+
+.git
+.gitignore
+
+# Build output (regenerated inside the container)
+build/
+model.dat
+main
+
+# XSPEC initpackage / hmake artifacts
+Makefile
+Makefile_to_use
+gradusFunctionMap.*
+gradusxspecFunctionMap.*
+lpack_gradus.*
+lpack_gradusxspec.*
+libgradus.*
+libgradusxspec.*
+pkgIndex.tcl
+*.o
+pgplot.ps
+pgplot.png
+gradusxspec_monitor.txt
+
+# Editor / tooling
+.cursor/
+.vscode/
+
+# Local notes and scratch scripts
+gradus_bugs.md
+reproduce_*.jl
+
+# Docs build output
+docs/build/
+docs/site/

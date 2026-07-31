@@ -10,8 +10,10 @@ Call Gradus models from XSPEC.
 | `gradus_lamp_thin` | Lamppost | Thin disc | spin, inc, h + reflection |
 | `gradus_ring_thin` | Ring | Thin disc | spin, inc, r, h + reflection |
 | `gradus_disc_thin` | Disc (filled) | Thin disc | spin, inc, r (outer), h + reflection |
+| `kerrz_lamp_thin` | Lamppost ([kerrz](https://git.sr.ht/~fjebaker/kerrz) CLI) | Thin disc | spin, inc, h + reflection |
+| `kerrz_ring_thin` | Ring (kerrz CLI) | Thin disc | spin, inc, r, h + reflection |
 
-These models convolve an xillver reflection table with a Gradus relativistic line profile. Load the package once with `lmod gradusxspec .`, then use any model name in `model`.
+These models convolve an xillver reflection table with a relativistic line profile. Gradus models use Gradus.jl in-process; `kerrz_*` models shell out to the [kerrz](https://git.sr.ht/~fjebaker/kerrz) CLI for emissivity and line profiles so both families can be compared side-by-side in XSPEC. Load the package once with `lmod gradusxspec .`, then use any model name in `model`.
 
 ## Prerequisites
 
@@ -45,7 +47,7 @@ julia --project=. src/build_lib.jl
 ./build-xspec.sh
 ```
 
-This runs `clean-xspec-package.sh`, `initpackage`, `patch-xspec-makefile.sh`, `fix-heasoft-f77libs.sh`, and `hmake`. Use `./build-xspec.sh --full` for a full clean rebuild (removes the existing `Makefile` and library first). Requires `HEADAS` to be set.
+This runs `clean-xspec-package.sh`, `initpackage`, `patch-xspec-makefile.sh`, and `hmake`. On macOS it also computes the gcc@14 Fortran library paths and passes them to `hmake` (see below). Use `./build-xspec.sh --full` for a full clean rebuild (removes the existing `Makefile` and library first). Requires `HEADAS` to be set.
 
 Manual steps, if preferred:
 
@@ -53,13 +55,58 @@ Manual steps, if preferred:
 ./clean-xspec-package.sh
 initpackage gradusxspec model.dat .
 ./patch-xspec-makefile.sh
-./fix-heasoft-f77libs.sh
-hmake
+# macOS only: override the stale Fortran paths on the hmake command line
+hmake F77LIBS4C="$(./fix-heasoft-f77libs.sh --print)"
+# Linux: just run hmake
 ```
 
 `initpackage` generates a fresh `Makefile` for the local model package. If you re-run it after changing `model.dat`, remove stale `lpack_<package>.*` files first with `./clean-xspec-package.sh`. That Makefile does not know about the GradusXSPEC shared library, so `patch-xspec-makefile.sh` inserts the required rpath and link flags into `HD_SHLIB_LIBS`. The script is idempotent (safe to run twice) and anchors on the `-lXS` line rather than fixed line numbers, so it should survive minor HEASOFT/Makefile changes better than a static patch file.
 
-After upgrading Homebrew `gcc@14`, `./build-xspec.sh` also refreshes HEASOFT's Fortran library paths automatically via `fix-heasoft-f77libs.sh`.
+#### macOS Fortran linking (gcc@14)
+
+HEASOFT records absolute Fortran library paths at configure time. After a `brew upgrade gcc@14`, those paths move and local-model links fail with `library emutls_w not found`. `fix-heasoft-f77libs.sh --print` recomputes the correct `F77LIBS4C` value from `gfortran-14`, and `build-xspec.sh` passes it to `hmake` on the command line (which takes precedence over the value baked into `hmakerc`). This scopes the fix to the current build and leaves the shared HEASOFT install untouched. As a last resort, running `./fix-heasoft-f77libs.sh` with no arguments rewrites `F77LIBS4C` across the HEASOFT tree in place. On Linux (or without Homebrew) this step is skipped entirely.
+
+### Checking the environment
+
+Before building, you can diagnose prerequisites without changing anything:
+
+```sh
+./check-env.sh
+```
+
+It reports PASS / WARN / FAIL for Julia, `HEADAS`, the HEASOFT tools, build inputs, and (on macOS) the gcc@14 Fortran libraries, and exits non-zero only on hard failures.
+
+### Building and testing on Linux
+
+The build pipeline is the same on Linux (the macOS-only gcc@14 step is skipped).
+If you already have HEASOFT installed, use the native path:
+
+```sh
+source $HEADAS/headas-init.sh
+./check-env.sh
+./build-julia.sh
+./build-xspec.sh
+```
+
+On older Linux (e.g. Rocky/RHEL 8), start XSPEC with `./run-xspec.sh` instead of
+plain `xspec`. That prepends juliaup’s `libstdc++` to `LD_LIBRARY_PATH` so
+`lmod` does not pick up an older system or HEASoft `libstdc++` (which triggers
+`GLIBCXX_... not found` when loading `libgradusxspec.so`). Details are in the
+[Building](docs/src/build.md#julia-libstdc-on-older-linux-rocky--rhel-8) manual page.
+
+An optional Docker-based reproducibility check is documented in
+[`docker/README.md`](docker/README.md). See also the
+[Building](docs/src/build.md) page in the Documenter manual (`./build-docs.sh`).
+
+### Building the manual
+
+User-facing documentation is built with [Documenter.jl](https://github.com/JuliaDocs/Documenter.jl):
+
+```sh
+./build-docs.sh
+```
+
+Open `docs/build/index.html` in a browser.
 
 ### 3. Test the models
 
@@ -97,6 +144,21 @@ Terminal logging and a fit-monitor file can be enabled via environment variables
 | `GRADUSXSPEC_MONITOR=1` | Write fit diagnostics to `gradusxspec_monitor.txt` in the repo root |
 | `GRADUSXSPEC_MONITOR=/path/to/file` | Same, but use a custom output path |
 | `GRADUSXSPEC_MONITOR_INTERVAL=N` | Refresh the monitor file every `N` evaluations (default 10) |
+| `GRADUSXSPEC_CACHE_LIMIT_GB=N` | Memory budget in GiB for Float32 convolution matrices, line spectra, and ring emissivity (default `16`; `0` = unlimited). LRU eviction when full; entries that still cannot fit are not cached. Line-profile kernels `L(g)` are cached separately and do not count toward this limit. |
+| `GRADUSXSPEC_KERNEL_CACHE=0` | Disable on-disk persistence of `L(g)` kernels (`1` / unset = enabled) |
+| `GRADUSXSPEC_KERNEL_CACHE_DIR=/path` | Directory for binary `L(g)` kernels (default: `$JULIA_DEPOT_PATH/gradusxspec/kernels`) |
+| `GRADUSXSPEC_BLUR_EMIN` / `EMAX` | Core blur band in keV (default `2`–`150`). Convolution matrices are built on this coarser grid, then rebinned to the XSPEC energy edges. |
+| `GRADUSXSPEC_BLUR_DE_ABS` / `DE_REL` | Core binning: `ΔE = max(DE_ABS, DE_REL × E)` (default `0.1` keV and `0.01`) |
+| `GRADUSXSPEC_BLUR_NATIVE=1` | Use the native reflection-table energy grid for blur (disables the coarse grid; much slower matrix builds) |
+| `GRADUSXSPEC_CONVOLVE=fft\|matrix` | Blur method: log-energy FFT (default) or legacy bin-integrated matrix |
+| `GRADUSXSPEC_FFT_NBINS=N` | Override FFT uniform log-E bin count (default ~0.5% spacing, minimum 1024) |
+| `GRADUSXSPEC_KERRZ=/path/to/kerrz` | Path to the [kerrz](https://git.sr.ht/~fjebaker/kerrz) binary for `kerrz_*` models (default `~/GitHub/kerrz/zig-out/bin/kerrz`, else `kerrz` on `PATH`) |
+| `GRADUSXSPEC_KERRZ_NPHOTONS_LAMP` / `_RING` | Photon counts for kerrz `emissivity` (defaults `3000` / `50000`) |
+| `GRADUSXSPEC_KERRZ_NTHREADS` | Threads passed to kerrz (default: Julia `Threads.nthreads()`) |
+
+Extremely coarse pads below/above the core band conserve flux that redshifts into or out of `[EMIN, EMAX]` given the `g` support of `L(g)`.
+
+Cold `kerrz_*` evaluations spawn the CLI (`emissivity` then `lineprof`) and are slow until the shared L(g) kernel cache and optional emissivity FITS cache (`$JULIA_DEPOT_PATH/gradusxspec/kerrz_em/`) warm up. Those caches key on the resolved kerrz binary, `kerrz --version`, photon counts, `GRADUSXSPEC_KERRZ_ROUT`, and related settings, so changing them (or upgrading kerrz) invalidates stale entries.
 
 Example:
 

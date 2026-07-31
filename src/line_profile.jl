@@ -93,18 +93,113 @@ function _corona_n_samples(::Val{:disc})
     return 256
 end
 
-# Match Gradus DiscCorona defaults: n concentric rings with r·Δr weighting
-# (uniform corona surface brightness). Gradus DiscCorona.emissivity_profile is
-# currently unusable here (DiscCoronaProfile expects RingCoronaProfile, but the
-# optimized RingCorona path returns RingApproximation).
+# Match Gradus DiscCorona defaults: n concentric rings from r_inner to r_outer
+# with r·Δr weighting (uniform corona surface brightness). Gradus
+# DiscCorona.emissivity_profile is unusable here (DiscCoronaProfile expects
+# RingCoronaProfile, but the optimized RingCorona path returns
+# RingApproximation), so we stack RingCorona profiles ourselves. Individual
+# ring emissivities are cached by (spin, r, h).
 const DISC_CORONA_N_RINGS = 10
 const DISC_CORONA_R_INNER = 1e-2
+
+const RING_EMISSIVITY_CACHE_LOCK = ReentrantLock()
+const RING_EMISSIVITY_CACHE = Dict{NTuple{3, Float64}, Any}()
+const RING_EMISSIVITY_CACHE_ORDER = NTuple{3, Float64}[]
+const RING_EMISSIVITY_CACHE_SIZES = Dict{NTuple{3, Float64}, UInt64}()
+const RING_EMISSIVITY_CACHE_HITS = Ref(0)
+const RING_EMISSIVITY_CACHE_MISSES = Ref(0)
+
+function _ring_emissivity_cache_key(m::KerrMetric, r::Float64, h::Float64)
+    return (Float64(m.a), r, h)
+end
+
+function _evict_one_ring_emissivity!()
+    return _evict_one_from!(
+        RING_EMISSIVITY_CACHE_LOCK,
+        RING_EMISSIVITY_CACHE,
+        RING_EMISSIVITY_CACHE_ORDER,
+        RING_EMISSIVITY_CACHE_SIZES,
+    )
+end
+
+"""
+Clamp non-positive branch emissivities in a Gradus `RingApproximation`.
+
+Gradus `emissivity_at` does `log2.(br.ε)` and DomainErrors on slightly negative
+numerical ε (see `gradus_bugs.md` / `reproduce_disc_log2.jl`).
+"""
+function _clamp_ring_approximation_emissivity!(profile)
+    profile isa Gradus.RingApproximation || return profile
+    for branch_group in profile.branches
+        for br in branch_group
+            @inbounds for i in eachindex(br.ε)
+                if !(br.ε[i] > 0)
+                    br.ε[i] = eps(typeof(br.ε[i]))
+                end
+            end
+        end
+    end
+    return profile
+end
+
+"""
+    _get_or_compute_ring_emissivity(m, d, r, h; n_samples) -> profile
+
+Cached `emissivity_profile` for a single `RingCorona` at `(spin, r, h)`.
+"""
+function _get_or_compute_ring_emissivity(
+    m::KerrMetric,
+    d,
+    r::Float64,
+    h::Float64;
+    n_samples::Int = _corona_n_samples(Val(:ring)),
+)
+    key = _ring_emissivity_cache_key(m, r, h)
+    cached = _bounded_cache_lookup!(
+        RING_EMISSIVITY_CACHE_LOCK,
+        RING_EMISSIVITY_CACHE,
+        RING_EMISSIVITY_CACHE_ORDER,
+        key,
+    )
+    if cached !== nothing
+        RING_EMISSIVITY_CACHE_HITS[] += 1
+        return cached
+    end
+
+    RING_EMISSIVITY_CACHE_MISSES[] += 1
+    profile = emissivity_profile(
+        m,
+        d,
+        RingCorona(; r = r, h = h);
+        n_samples = n_samples,
+    )
+    _clamp_ring_approximation_emissivity!(profile)
+    return _bounded_cache_put!(
+        RING_EMISSIVITY_CACHE_LOCK,
+        RING_EMISSIVITY_CACHE,
+        RING_EMISSIVITY_CACHE_ORDER,
+        RING_EMISSIVITY_CACHE_SIZES,
+        key,
+        profile,
+        _summary_nbytes(profile),
+    )
+end
+
+function ring_emissivity_cache_size()
+    return length(RING_EMISSIVITY_CACHE)
+end
+
+function ring_emissivity_cache_stats()
+    return RING_EMISSIVITY_CACHE_HITS[], RING_EMISSIVITY_CACHE_MISSES[]
+end
 
 """
 Build a disc-corona emissivity function matching Gradus `DiscCorona`:
 
     radii = range(r_inner, r_outer, n_rings)
     ε(ρ) = Σᵢ ε_ringᵢ(ρ) · rᵢ · Δr
+
+Ring emissivity profiles are cached by `(spin, r, h)`.
 """
 function _disc_corona_emissivity(
     m::KerrMetric,
@@ -120,14 +215,10 @@ function _disc_corona_emissivity(
     ))
     radii = collect(range(r_inner, r_outer; length = n_rings))
     δr = n_rings > 1 ? (radii[2] - radii[1]) : r_outer
-    profiles = map(radii) do r
-        emissivity_profile(
-            m,
-            d,
-            RingCorona(; r = r, h = height);
-            n_samples = n_samples,
-        )
-    end
+    profiles = [
+        _get_or_compute_ring_emissivity(m, d, r, height; n_samples = n_samples) for
+        r in radii
+    ]
     return ρ -> begin
         total = 0.0
         @inbounds for i in eachindex(radii)
@@ -208,6 +299,13 @@ function _raw_line_profile(
         return _gaussian_line_profile(params[1], g_bins)
     end
 
+    if corona_variant in (:kerrz_lamppost, :kerrz_ring)
+        disc_variant == :thin || throw(ArgumentError(
+            "kerrz corona variants require disc_variant=:thin; got $disc_variant",
+        ))
+        return kerrz_raw_line_profile(params, g_bins, corona_variant)
+    end
+
     corona_variant in (:lamppost, :ring, :disc) ||
         throw(ArgumentError("unsupported corona variant: $corona_variant"))
     disc_variant in (:ss, :thin) ||
@@ -227,6 +325,16 @@ function _raw_line_profile(
     ε = if corona_variant == :disc
         _, _, r_outer, height = _ring_geometry(params)
         _disc_corona_emissivity(m, d, r_outer, height)
+    elseif corona_variant == :ring
+        _, _, radius, height = _ring_geometry(params)
+        profile = _get_or_compute_ring_emissivity(
+            m,
+            d,
+            radius,
+            height;
+            n_samples = _corona_n_samples(Val(:ring)),
+        )
+        _scalar_emissivity(profile)
     else
         corona = _build_corona(params, Val(corona_variant))
         profile = emissivity_profile(
@@ -254,8 +362,8 @@ end
     line_profile_kernel(params, corona_variant, disc_variant; g_grid=default_g_grid()) -> (g, L)
 
 Evaluate a unit-area line-profile kernel `L(g)` for the given corona/disc geometry.
-`corona_variant` is `:lamppost`, `:ring`, `:disc`, or `:gauss`; `disc_variant`
-is `:ss`, `:thin`, or `:gauss`.
+`corona_variant` is `:lamppost`, `:ring`, `:disc`, `:kerrz_lamppost`, `:kerrz_ring`,
+or `:gauss`; `disc_variant` is `:ss`, `:thin`, or `:gauss`.
 """
 function line_profile_kernel(
     params::NTuple{N, Float64},

@@ -3,11 +3,16 @@ module GradusXSPEC
 using Base: @ccallable
 using Gradus
 include("model_definition.jl")
+include("cache_memory.jl")
+include("kerrz_backend.jl")
 include("line_profile.jl")
 include("table_model.jl")
 include("convolution.jl")
+include("convolution_fft.jl")  # FFT path + convolution_method; after matrix helpers
+include("blur_grid.jl")
 include("spectrum.jl")
 include("model_runtime.jl")
+include("kernel_cache.jl")
 include("monitor.jl")
 
 export default_g_grid,
@@ -20,7 +25,11 @@ export default_g_grid,
     interpolate_table_spectrum,
     interpolate_line_kernel,
     build_convolution_matrix,
+    convolution_method,
     convolve_reflection,
+    convolve_reflection_fft,
+    convolve_reflection_matrix,
+    log_energy_bin_edges,
     rebin_flux,
     parse_init_string,
     InitConfig,
@@ -36,14 +45,28 @@ export default_g_grid,
     LAMP_THIN_MODEL,
     RING_THIN_MODEL,
     DISC_THIN_MODEL,
-    TEST_GAUSS_MODEL
+    TEST_GAUSS_MODEL,
+    KERRZ_LAMP_THIN_MODEL,
+    KERRZ_RING_THIN_MODEL,
+    kerrz_binary_path
 
 const LINE_CACHE_LOCK = ReentrantLock()
 const LINE_SPECTRUM_CACHE =
     Dict{Tuple{String, UInt64, Tuple{Vararg{Int}}}, Vector{Float64}}()
+const LINE_CACHE_ORDER = Any[]
+const LINE_CACHE_SIZES = Dict{Any, UInt64}()
 const VERBOSE = Ref(false)
 const LINE_CACHE_HITS = Ref(0)
 const LINE_CACHE_MISSES = Ref(0)
+
+function _evict_one_line_spectrum!()
+    return _evict_one_from!(
+        LINE_CACHE_LOCK,
+        LINE_SPECTRUM_CACHE,
+        LINE_CACHE_ORDER,
+        LINE_CACHE_SIZES,
+    )
+end
 
 function _verbose_enabled()
     return VERBOSE[] || lowercase(get(ENV, "GRADUSXSPEC_VERBOSE", "0")) in ("1", "true", "yes")
@@ -69,9 +92,12 @@ function _get_or_compute_line_spectrum(
 ) where {N}
     key = (rt.definition.name, energy_sig, idx)
     grid_params = _gradus_grid_point_params(rt, idx)
-    cached = lock(LINE_CACHE_LOCK) do
-        get(LINE_SPECTRUM_CACHE, key, nothing)
-    end
+    cached = _bounded_cache_lookup!(
+        LINE_CACHE_LOCK,
+        LINE_SPECTRUM_CACHE,
+        LINE_CACHE_ORDER,
+        key,
+    )
     if cached !== nothing
         LINE_CACHE_HITS[] += 1
         if _verbose_enabled()
@@ -94,9 +120,15 @@ function _get_or_compute_line_spectrum(
         rt.definition.corona_variant,
         rt.definition.disc_variant,
     )
-    lock(LINE_CACHE_LOCK) do
-        return get!(LINE_SPECTRUM_CACHE, key, spec)
-    end
+    return _bounded_cache_put!(
+        LINE_CACHE_LOCK,
+        LINE_SPECTRUM_CACHE,
+        LINE_CACHE_ORDER,
+        LINE_CACHE_SIZES,
+        key,
+        spec,
+        _array_nbytes(spec),
+    )
 end
 
 """
@@ -307,6 +339,48 @@ end
     )
 end
 
+@ccallable function kerrzlampthinxspec(
+    energy::Ptr{Cdouble},
+    Nflux::Cint,
+    parameter::Ptr{Cdouble},
+    spectrum::Cint,
+    flux::Ptr{Cdouble},
+    fluxError::Ptr{Cdouble},
+    init::Ptr{Cchar},
+)::Cint
+    return _xspec_model_entry_catch(
+        MODEL_RUNTIMES[KERRZ_LAMP_THIN_MODEL.name],
+        energy,
+        Nflux,
+        parameter,
+        spectrum,
+        flux,
+        fluxError,
+        init,
+    )
+end
+
+@ccallable function kerrzringthinxspec(
+    energy::Ptr{Cdouble},
+    Nflux::Cint,
+    parameter::Ptr{Cdouble},
+    spectrum::Cint,
+    flux::Ptr{Cdouble},
+    fluxError::Ptr{Cdouble},
+    init::Ptr{Cchar},
+)::Cint
+    return _xspec_model_entry_catch(
+        MODEL_RUNTIMES[KERRZ_RING_THIN_MODEL.name],
+        energy,
+        Nflux,
+        parameter,
+        spectrum,
+        flux,
+        fluxError,
+        init,
+    )
+end
+
 function line_spectrum_cache_size()
     return length(LINE_SPECTRUM_CACHE)
 end
@@ -314,5 +388,12 @@ end
 function line_spectrum_cache_stats()
     return LINE_CACHE_HITS[], LINE_CACHE_MISSES[]
 end
+
+# Prefer evicting large convolution matrices first, then ring emissivity, then
+# line spectra. Shared budget defaults to 16 GiB (GRADUSXSPEC_CACHE_LIMIT_GB).
+empty!(CACHE_EVICT_CALLBACKS)
+register_cache_evictor!(_evict_one_matrix!)
+register_cache_evictor!(_evict_one_ring_emissivity!)
+register_cache_evictor!(_evict_one_line_spectrum!)
 
 end

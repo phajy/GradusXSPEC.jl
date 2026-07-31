@@ -12,6 +12,8 @@
 //   gradus_ring_thin — ring corona + thin disc
 //   gradus_disc_thin — filled disc corona + thin disc
 //   test_gauss       — temporary Gaussian blur (narrow ≈ identity)
+//   kerrz_lamp_thin  — lamppost via external kerrz CLI
+//   kerrz_ring_thin  — ring corona via external kerrz CLI
 //
 // Note: XSPEC model names may contain underscores, but wrapper function names
 // (below) must not.
@@ -32,6 +34,12 @@ extern int gradusdiscthinxspec(
     const double* energy, int Nflux, const double* parameter, int spectrum,
     double* flux, double* fluxVariance, const char* init);
 extern int testgaussxspec(
+    const double* energy, int Nflux, const double* parameter, int spectrum,
+    double* flux, double* fluxVariance, const char* init);
+extern int kerrzlampthinxspec(
+    const double* energy, int Nflux, const double* parameter, int spectrum,
+    double* flux, double* fluxVariance, const char* init);
+extern int kerrzringthinxspec(
     const double* energy, int Nflux, const double* parameter, int spectrum,
     double* flux, double* fluxVariance, const char* init);
 
@@ -84,4 +92,20 @@ void testgaussjulia(
 {
     ensure_julia_initialized();
     testgaussxspec(energy, Nflux, parameter, spectrum, flux, fluxVariance, init);
+}
+
+void kerrzlampthinjulia(
+    const double* energy, int Nflux, const double* parameter, int spectrum,
+    double* flux, double* fluxVariance, const char* init)
+{
+    ensure_julia_initialized();
+    kerrzlampthinxspec(energy, Nflux, parameter, spectrum, flux, fluxVariance, init);
+}
+
+void kerrzringthinjulia(
+    const double* energy, int Nflux, const double* parameter, int spectrum,
+    double* flux, double* fluxVariance, const char* init)
+{
+    ensure_julia_initialized();
+    kerrzringthinxspec(energy, Nflux, parameter, spectrum, flux, fluxVariance, init);
 }

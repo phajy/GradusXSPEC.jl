@@ -57,55 +57,84 @@ function _format_reflection_grid_point(rt::ModelRuntime, params::Tuple{Vararg{Fl
     return join(parts, ", ")
 end
 
-function _convolution_cache_signature(g_grid::AbstractVector{<:Real}, n_sub::Int)
-    return UInt64(hash(g_grid, hash(n_sub)))
+function _convolution_cache_signature(
+    g_grid::AbstractVector{<:Real},
+    n_sub::Int,
+    blur_sig::UInt64,
+    backend_sig::UInt64 = UInt64(0),
+)
+    return UInt64(hash(backend_sig, hash(blur_sig, hash(g_grid, hash(n_sub)))))
 end
 
 const MATRIX_CACHE_LOCK = ReentrantLock()
 const CONVOLUTION_MATRIX_CACHE =
-    Dict{Tuple{String, UInt64, Int, String, Tuple{Vararg{Int}}}, Matrix{Float64}}()
+    Dict{Tuple{String, UInt64, Int, String, Tuple{Vararg{Int}}}, Matrix{Float32}}()
+const MATRIX_CACHE_ORDER = Any[]
+const MATRIX_CACHE_SIZES = Dict{Any, UInt64}()
 const MATRIX_CACHE_HITS = Ref(0)
 const MATRIX_CACHE_MISSES = Ref(0)
+
+function _evict_one_matrix!()
+    return _evict_one_from!(
+        MATRIX_CACHE_LOCK,
+        CONVOLUTION_MATRIX_CACHE,
+        MATRIX_CACHE_ORDER,
+        MATRIX_CACHE_SIZES,
+    )
+end
+
+"""Apply a cached Float32 blur matrix to a Float64 reflection spectrum."""
+function _apply_blur_matrix(M::Matrix{Float32}, R::AbstractVector{<:Real})
+    return Float64.(M * Float32.(R))
+end
 
 function _get_or_compute_convolution_matrix(
     rt::ModelRuntime,
     table::XspecTableModel,
     table_path::AbstractString,
-    gradus_idx::Tuple{Vararg{Int, N}};
+    gradus_idx::Tuple{Vararg{Int, N}},
+    blur_lo::AbstractVector{<:Real},
+    blur_hi::AbstractVector{<:Real};
     g_grid::AbstractVector{<:Real} = default_g_grid(),
     n_sub::Int = 4,
 ) where {N}
-    sig = _convolution_cache_signature(g_grid, n_sub)
+    blur_sig = blur_grid_signature(blur_lo, blur_hi)
+    backend_sig = _line_kernel_backend_signature(rt.definition.corona_variant)
+    sig = _convolution_cache_signature(g_grid, n_sub, blur_sig, backend_sig)
     key = (rt.definition.name, sig, n_sub, table_path, gradus_idx)
 
-    cached = lock(MATRIX_CACHE_LOCK) do
-        get(CONVOLUTION_MATRIX_CACHE, key, nothing)
-    end
+    cached = _bounded_cache_lookup!(
+        MATRIX_CACHE_LOCK,
+        CONVOLUTION_MATRIX_CACHE,
+        MATRIX_CACHE_ORDER,
+        key,
+    )
     if cached !== nothing
         MATRIX_CACHE_HITS[] += 1
         return cached
     end
 
     MATRIX_CACHE_MISSES[] += 1
-    gradus_params = _gradus_grid_point_params(rt, gradus_idx)
-    _, L = line_profile_kernel(
-        gradus_params,
-        rt.definition.corona_variant,
-        rt.definition.disc_variant;
-        g_grid = g_grid,
-    )
-    M = build_convolution_matrix(
-        table.energy_lo,
-        table.energy_hi,
-        table.energy_lo,
-        table.energy_hi,
+    L = _get_or_compute_line_kernel(rt, gradus_idx; g_grid = g_grid)
+    M64 = build_convolution_matrix(
+        blur_lo,
+        blur_hi,
+        blur_lo,
+        blur_hi,
         g_grid,
         L;
         n_sub = n_sub,
     )
-    lock(MATRIX_CACHE_LOCK) do
-        return get!(CONVOLUTION_MATRIX_CACHE, key, M)
-    end
+    M = Float32.(M64)
+    return _bounded_cache_put!(
+        MATRIX_CACHE_LOCK,
+        CONVOLUTION_MATRIX_CACHE,
+        MATRIX_CACHE_ORDER,
+        MATRIX_CACHE_SIZES,
+        key,
+        M,
+        _array_nbytes(M),
+    )
 end
 
 function _interpolate_reflection_spectrum(
@@ -147,8 +176,14 @@ function evaluate_spectrum_interpolated(
     )
 
     R_interp = _interpolate_reflection_spectrum(rt, table, refl_corners)
+    blur_lo, blur_hi = blur_energy_bin_edges(
+        table.energy_lo,
+        table.energy_hi;
+        g_grid = g_grid,
+    )
 
     used_identity = false
+    conv_method = convolution_method()
     if rt.definition.corona_variant == :gauss
         # The Gaussian diagnostic kernel is analytic and cheap, so evaluate it
         # at the exact requested Sigma instead of interpolating between grid
@@ -160,7 +195,8 @@ function evaluate_spectrum_interpolated(
         # ~E-dependent scale error versus atable{xillver}).
         if gaussian_is_identity(gradus_params[1]; g_grid = g_grid)
             used_identity = true
-            convolved = copy(R_interp)
+            convolved_blur = nothing
+            convolved_table = copy(R_interp)
         else
             _, L = line_profile_kernel(
                 gradus_params,
@@ -168,43 +204,101 @@ function evaluate_spectrum_interpolated(
                 rt.definition.disc_variant;
                 g_grid = g_grid,
             )
-            M = build_convolution_matrix(
-                table.energy_lo,
-                table.energy_hi,
-                table.energy_lo,
-                table.energy_hi,
-                g_grid,
-                L;
-                n_sub = n_sub,
-            )
-            convolved = M * R_interp
+            if conv_method === :matrix
+                R_blur = rebin_flux(
+                    R_interp,
+                    table.energy_lo,
+                    table.energy_hi,
+                    blur_lo,
+                    blur_hi,
+                )
+                convolved_blur = convolve_reflection_matrix(
+                    R_blur,
+                    blur_lo,
+                    blur_hi,
+                    g_grid,
+                    L;
+                    n_sub = n_sub,
+                )
+            else
+                # FFT remaps table → uniform log-E → blur edges (avoid an
+                # intermediate rebin onto the hybrid coarse blur grid).
+                convolved_blur = convolve_reflection_fft(
+                    R_interp,
+                    table.energy_lo,
+                    table.energy_hi,
+                    g_grid,
+                    L;
+                    out_lo = blur_lo,
+                    out_hi = blur_hi,
+                )
+            end
+            convolved_table = nothing
         end
     else
-        convolved = zeros(Float64, length(R_interp))
-        for (gradus_idx, weight) in gradus_corners
-            M = _get_or_compute_convolution_matrix(
-                rt,
-                table,
-                resolved_path,
-                gradus_idx;
-                g_grid = g_grid,
-                n_sub = n_sub,
+        convolved_blur = zeros(Float64, length(blur_lo))
+        if conv_method === :matrix
+            R_blur = rebin_flux(
+                R_interp,
+                table.energy_lo,
+                table.energy_hi,
+                blur_lo,
+                blur_hi,
             )
-            blurred = M * R_interp
-            @inbounds for i in eachindex(convolved)
-                convolved[i] += weight * blurred[i]
+            for (gradus_idx, weight) in gradus_corners
+                M = _get_or_compute_convolution_matrix(
+                    rt,
+                    table,
+                    resolved_path,
+                    gradus_idx,
+                    blur_lo,
+                    blur_hi;
+                    g_grid = g_grid,
+                    n_sub = n_sub,
+                )
+                blurred = _apply_blur_matrix(M, R_blur)
+                @inbounds for i in eachindex(convolved_blur)
+                    convolved_blur[i] += weight * blurred[i]
+                end
+            end
+        else
+            for (gradus_idx, weight) in gradus_corners
+                L = _get_or_compute_line_kernel(rt, gradus_idx; g_grid = g_grid)
+                blurred = convolve_reflection_fft(
+                    R_interp,
+                    table.energy_lo,
+                    table.energy_hi,
+                    g_grid,
+                    L;
+                    out_lo = blur_lo,
+                    out_hi = blur_hi,
+                )
+                @inbounds for i in eachindex(convolved_blur)
+                    convolved_blur[i] += weight * blurred[i]
+                end
             end
         end
+        convolved_table = nothing
     end
 
-    output = _rebin_to_energy_edges(convolved, table.energy_lo, table.energy_hi, energy_edges)
+    output = if used_identity
+        _rebin_to_energy_edges(
+            convolved_table,
+            table.energy_lo,
+            table.energy_hi,
+            energy_edges,
+        )
+    else
+        _rebin_to_energy_edges(convolved_blur, blur_lo, blur_hi, energy_edges)
+    end
 
     if verbose
         mode = used_identity ? "identity (no blur)" : "blur"
         println(
-            "GradusXSPEC: $(rt.definition.name) $mode at ($(_format_gradus_grid_point(rt, gradus_params)); ",
+            "GradusXSPEC: $(rt.definition.name) $mode convolve=$(conv_method) at ($(_format_gradus_grid_point(rt, gradus_params)); ",
             "$(_format_reflection_grid_point(rt, refl_params))) from ",
             "$(length(gradus_corners)) Gradus and $(length(refl_corners)) reflection corner(s); ",
+            "blur bins=$(length(blur_lo)); ",
             "matrix cache hits=$(MATRIX_CACHE_HITS[]), misses=$(MATRIX_CACHE_MISSES[])",
         )
     end
@@ -230,10 +324,16 @@ function evaluate_spectrum(
     gradus_params, refl_params = _split_physics_params(rt, params)
 
     R = interpolate_table_spectrum(table, refl_params)
+    blur_lo, blur_hi = blur_energy_bin_edges(
+        table.energy_lo,
+        table.energy_hi;
+        g_grid = g_grid,
+    )
 
     if rt.definition.corona_variant == :gauss &&
        gaussian_is_identity(gradus_params[1]; g_grid = g_grid)
         convolved = copy(R)
+        src_lo, src_hi = table.energy_lo, table.energy_hi
     else
         _, L = line_profile_kernel(
             gradus_params,
@@ -241,25 +341,41 @@ function evaluate_spectrum(
             rt.definition.disc_variant;
             g_grid = g_grid,
         )
-        convolved = convolve_reflection(
-            R,
-            table.energy_lo,
-            table.energy_hi,
-            g_grid,
-            L;
-            n_sub = n_sub,
-        )
+        conv_method = convolution_method()
+        if conv_method === :matrix
+            R_blur = rebin_flux(R, table.energy_lo, table.energy_hi, blur_lo, blur_hi)
+            convolved = convolve_reflection_matrix(
+                R_blur,
+                blur_lo,
+                blur_hi,
+                g_grid,
+                L;
+                n_sub = n_sub,
+            )
+        else
+            convolved = convolve_reflection_fft(
+                R,
+                table.energy_lo,
+                table.energy_hi,
+                g_grid,
+                L;
+                out_lo = blur_lo,
+                out_hi = blur_hi,
+            )
+        end
+        src_lo, src_hi = blur_lo, blur_hi
     end
 
     if verbose
         println(
-            "GradusXSPEC: $(rt.definition.name) direct evaluation at ",
+            "GradusXSPEC: $(rt.definition.name) direct evaluation convolve=$(convolution_method()) at ",
             "($(_format_gradus_grid_point(rt, gradus_params)); ",
-            "$(_format_reflection_grid_point(rt, refl_params)))",
+            "$(_format_reflection_grid_point(rt, refl_params))); ",
+            "blur bins=$(length(blur_lo))",
         )
     end
 
-    return _rebin_to_energy_edges(convolved, table.energy_lo, table.energy_hi, energy_edges)
+    return _rebin_to_energy_edges(convolved, src_lo, src_hi, energy_edges)
 end
 
 function build_model_runtimes(models = ALL_MODELS)
