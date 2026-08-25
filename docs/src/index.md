@@ -24,8 +24,11 @@ name in `model`.
 ## Quick start
 
 1. [Build the Julia library and XSPEC package](build.md).
-2. [Check parameter meanings and limits](models.md).
-3. [Validate spectra and generate plots](validation.md) before or alongside
+2. [Load and fit the models in XSPEC](xspec.md).
+3. [Check parameter meanings and limits](models.md).
+4. [Browse the example gallery](examples.md) for parameter scans and
+   backend cross-checks.
+5. [Validate spectra and generate plots](validation.md) before or alongside
    XSPEC testing.
 
 ## References

@@ -8,7 +8,9 @@ makedocs(
     pages = [
         "Home" => "index.md",
         "Building" => "build.md",
+        "Using in XSPEC" => "xspec.md",
         "Models" => "models.md",
+        "Examples" => "examples.md",
         "Validation" => "validation.md",
     ],
     checkdocs = :exports,

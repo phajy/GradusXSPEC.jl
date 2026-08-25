@@ -1,0 +1,28 @@
+# Template: simulate a powerlaw + blurred-reflection spectrum with fakeit,
+# then recover the lamppost height with a fit.
+#
+# Parameter numbering: powerlaw 1-2; gradus_lamp_thin 3 spin, 4 inc, 5 h,
+# 6-10 xillver, 11 redshift, 12 norm.
+#
+# Notes:
+# - fakeit prompt order can differ slightly between XSPEC versions; adjust the
+#   inline answers (y / file name / exposure) if yours differs.
+# - The fit steps h across its 0.25 r_g grid; each new grid corner costs one
+#   ray-traced kernel on the first fit and is cached on disk afterwards.
+#
+# Run from the repository root:
+#   xspec - examples/xspec/fake_and_fit.xcm
+lmod gradusxspec .
+dummyrsp 0.5 10.0 300 log
+model powerlaw + gradus_lamp_thin & 2.0 & 1.0 & /*
+# Freeze everything in the reflection component except the lamppost height.
+freeze 3-11
+thaw 5
+# Simulate at the "true" height h = 5 r_g.
+newpar 5 5.0
+fakeit none & y & & fake_lamp.fak & 50000, 1.0, 50000
+ignore **-0.5 10.0-**
+# Displace the height and let the fit pull it back.
+newpar 5 8.0
+fit 100
+show parameters

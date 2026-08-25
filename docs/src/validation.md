@@ -2,7 +2,8 @@
 
 Check the Julia-side pipeline before or alongside XSPEC testing. The scripts
 exercise table interpolation, line profiles, convolution, and the full blurred
-spectrum.
+spectrum. For parameter scans, physical interpretation, and Gradus-vs-kerrz
+cross-checks, see the [example gallery](examples.md).
 
 ## Prerequisites
 

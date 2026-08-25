@@ -79,6 +79,39 @@ The model init string starts with the reflection table path (default
 
 Example: `xillverD-5.fits verbose monitor`
 
+## Blur working grid and soft X-ray band
+
+Relativistic blurring is applied on a hybrid **working energy grid** (see
+`src/blur_grid.jl`), not directly on the xillver table bins. By default the
+**core band** runs from `GRADUSXSPEC_BLUR_EMIN` = **2 keV** to
+`GRADUSXSPEC_BLUR_EMAX` = 150 keV with bin widths
+`ΔE = max(0.1 keV, 1% × E)`. Below 2 keV the grid adds only a single extremely
+coarse pad bin down to the table edge (and similarly above the core toward
+high energies). That design targets Fe Kα and typical 2–10 keV fits without
+paying the cost of a fine grid over the full xillver range.
+
+**Consequence:** blurred model output is **zero below about 1.3 keV** with
+default settings. Observed energies in that band fall into the coarse pad,
+where the convolution cannot resolve reflected flux from the table; only once
+the working grid reaches the fine core (near 2 keV) does structure appear.
+This is expected, not a bug in the reflection table.
+
+**Workarounds today:**
+
+- Lower `GRADUSXSPEC_BLUR_EMIN` before starting XSPEC if you need blurred
+  flux at softer energies (rebuild/restart not required — read at evaluation
+  time).
+- Set `GRADUSXSPEC_BLUR_NATIVE=1` to blur on the native xillver table grid
+  instead (slower, but full table coverage).
+
+**Possible future default:** extend the core band downward to about **0.1 keV**
+with moderate resolution (similar `ΔE` rules as the current 2–150 keV core),
+so soft-band and broad-band fits work out of the box without env overrides.
+That would increase blur-grid size and memory use slightly; the trade-off has
+not been implemented yet.
+
+See also the `GRADUSXSPEC_BLUR_*` variables in [Using in XSPEC](xspec.md).
+
 ## Physics references
 
 Implementation follows Gradus corona and disc types; see the

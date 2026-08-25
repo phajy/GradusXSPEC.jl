@@ -41,6 +41,8 @@ pgplot.png
 xillverD-5.fits
 gradusxspec_monitor.txt
 docs/figures/
+docs/src/figures/
+fake_lamp.fak
 
 # Local debugging notes (not for the repo)
 gradus_bugs.md

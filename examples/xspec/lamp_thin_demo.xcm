@@ -1,0 +1,17 @@
+# Evaluate and plot the gradus_lamp_thin model on a dummy response.
+# The first evaluation ray-traces the L(g) kernel (about a minute); the
+# kernel is cached on disk afterwards.
+#
+# gradus_lamp_thin parameters: 1 spin, 2 inc, 3 h, 4-8 xillver
+# (Gamma, A_Fe, logXi, Dens, Incl), 9 redshift, 10 norm.
+#
+# Run from the repository root:
+#   xspec - examples/xspec/lamp_thin_demo.xcm
+lmod gradusxspec .
+dummyrsp 0.5 10.0 300 log
+model gradus_lamp_thin & /*
+# Lower the source to h = 2 r_g: stronger central illumination, broader red wing.
+newpar 3 2.0
+setplot energy
+cpd /xs
+plot model
