@@ -723,7 +723,7 @@ version = "0.4.32"
     DiffEqGPU = "071ae1c0-96b5-11e9-1965-c90190d839ea"
 
 [[deps.GradusXSPEC]]
-deps = ["FITSIO", "Gradus", "PackageCompiler"]
+deps = ["FFTW", "FITSIO", "Gradus", "PackageCompiler"]
 path = ".."
 uuid = "8153e274-656c-44e5-9129-66f17e150590"
 version = "0.2.0"

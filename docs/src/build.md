@@ -4,6 +4,8 @@
 
 - Julia 1.12 (tested with 1.12.6)
 - HEASOFT / XSPEC with `HEADAS` configured
+- [AstroRegistry](https://github.com/astro-group-bristol/AstroRegistry) (Gradus is not on General):
+  `julia -e 'using Pkg; Pkg.Registry.add(url="https://github.com/astro-group-bristol/AstroRegistry")'`
 - Gradus.jl (via this project's `Project.toml`)
 - `xillverD-5.fits` in the repository root ([download](https://sites.srl.caltech.edu/~javier/xillver/index.html))
 - Homebrew `gcc@14` on **macOS only** (Fortran linking workaround)
@@ -151,11 +153,20 @@ Docker is optional; native Linux builds are the usual development path.
 
 ## Building the manual
 
+Locally:
+
 ```sh
 ./build-docs.sh
 ```
 
 Open `docs/build/index.html` in a browser.
+
+On GitHub, the [Documentation](https://github.com/phajy/GradusXSPEC.jl/actions/workflows/documentation.yml)
+workflow builds and deploys the manual to GitHub Pages on pushes to `main` and
+on tags. Hosted docs:
+
+- [dev](https://phajy.github.io/GradusXSPEC.jl/dev/) (from `main`)
+- [stable](https://phajy.github.io/GradusXSPEC.jl/stable/) (latest tagged release)
 
 ## Continuous integration
 
@@ -163,6 +174,7 @@ A practical split for GitHub Actions:
 
 | Tier | What | When | Cost |
 |------|------|------|------|
+| **Docs** | Documenter build + deploy to GitHub Pages | Every push to `main` / tags / PRs | Minutes |
 | **Light** | `Pkg.instantiate()`, load `GradusXSPEC`, Julia validation scripts | Every push / PR | Minutes |
 | **Heavy** | Full HEASoft + PackageCompiler + `hmake` + XSPEC smoke test | Manual (`workflow_dispatch`) or release tags | 30–60+ min, ~12 GB image |
 
@@ -175,9 +187,10 @@ already installed.
 
 Recommended starting point:
 
-1. **Julia-only CI** on every PR — `validate_table.jl`, `validate_spectrum.jl`
+1. **Docs CI** (already set up) — Documenter on every PR / `main` push.
+2. **Julia-only CI** on every PR — `validate_table.jl`, `validate_spectrum.jl`
    (with a cached or downloaded `xillverD-5.fits`), no XSPEC.
-2. **Optional HEASoft workflow** triggered manually — build the package and run
+3. **Optional HEASoft workflow** triggered manually — build the package and run
    `docker/smoke-test.xcm` or the equivalent native steps on a self-hosted runner.
 
 ## Diagnostics

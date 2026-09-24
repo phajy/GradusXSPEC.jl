@@ -1,0 +1,9 @@
+# GradusXSPEC smoke test: load the package and evaluate the fast diagnostic
+# model (test_gauss does no ray tracing, so this completes in seconds).
+#
+# Run from the repository root:
+#   xspec - examples/xspec/smoke_test.xcm
+lmod gradusxspec .
+dummyrsp 0.3 10.0 200 lin
+model test_gauss & /*
+flux 0.5 9.0
