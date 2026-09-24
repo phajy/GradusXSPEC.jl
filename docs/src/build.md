@@ -4,6 +4,8 @@
 
 - Julia 1.12 (tested with 1.12.6)
 - HEASOFT / XSPEC with `HEADAS` configured
+- [AstroRegistry](https://github.com/astro-group-bristol/AstroRegistry) (Gradus is not on General):
+  `julia -e 'using Pkg; Pkg.Registry.add(url="https://github.com/astro-group-bristol/AstroRegistry")'`
 - Gradus.jl (via this project's `Project.toml`)
 - `xillverD-5.fits` in the repository root ([download](https://sites.srl.caltech.edu/~javier/xillver/index.html))
 - Homebrew `gcc@14` on **macOS only** (Fortran linking workaround)

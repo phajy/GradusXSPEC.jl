@@ -21,7 +21,8 @@ These models convolve an xillver reflection table with a relativistic line profi
 
 - Julia 1.12 (tested with 1.12.6)
 - HEASOFT / XSPEC with `HEADAS` environment configured
-- Gradus.jl (installed via this project's `Project.toml`)
+- [AstroRegistry](https://github.com/astro-group-bristol/AstroRegistry) so Gradus.jl can resolve (`julia -e 'using Pkg; Pkg.Registry.add(url="https://github.com/astro-group-bristol/AstroRegistry")'`)
+- Gradus.jl (installed via this project's `Project.toml` once AstroRegistry is available)
 - Homebrew `gcc@14` (for XSPEC local-model linking on macOS)
 
 ## How to build the library and import it into XSPEC

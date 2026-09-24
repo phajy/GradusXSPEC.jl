@@ -29,6 +29,8 @@ jobs:
         shell: julia --color=yes --project=docs {0}
         run: |
           using Pkg
+          # Gradus is published via AstroRegistry, not General
+          Pkg.Registry.add(url = "https://github.com/astro-group-bristol/AstroRegistry")
           Pkg.develop(PackageSpec(path=pwd()))
           Pkg.instantiate()
       - name: Build and deploy
