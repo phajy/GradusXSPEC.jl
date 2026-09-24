@@ -29,6 +29,10 @@ jobs:
         shell: julia --color=yes --project=docs {0}
         run: |
           using Pkg
+          # Fresh runners (and branch-scoped caches) may not have General yet.
+          # Adding only AstroRegistry first can leave General missing, so deps
+          # like MutableArithmetics fail with "expected package to be registered".
+          Pkg.Registry.add("General")
           # Gradus is published via AstroRegistry, not General
           Pkg.Registry.add(url = "https://github.com/astro-group-bristol/AstroRegistry")
           Pkg.develop(PackageSpec(path=pwd()))
