@@ -2,6 +2,8 @@
 
 Call Gradus models from XSPEC.
 
+**Documentation:** [stable](https://phajy.github.io/GradusXSPEC.jl/stable/) · [dev](https://phajy.github.io/GradusXSPEC.jl/dev/)
+
 ## Models
 
 | XSPEC name | Corona | Disc | Gradus params |

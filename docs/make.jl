@@ -16,3 +16,8 @@ makedocs(
     checkdocs = :exports,
     warnonly = [:missing_docs, :cross_references],
 )
+
+deploydocs(
+    repo = "github.com/phajy/GradusXSPEC.jl.git",
+    push_preview = true,
+)
